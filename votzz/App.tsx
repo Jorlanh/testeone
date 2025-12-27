@@ -1,138 +1,71 @@
-
-import React, { useState } from 'react';
+import React from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
-import Dashboard from './pages/Dashboard';
-import AssemblyList from './pages/AssemblyList';
-import CreateAssembly from './pages/CreateAssembly';
-import VotingRoom from './pages/VotingRoom';
-import Reports from './pages/Reports';
-import Auth from './pages/Auth';
+
+// Páginas
 import LandingPage from './pages/LandingPage';
-import GovernanceSales from './pages/GovernanceSales';
-import Blog from './pages/Blog';
-import Pricing from './pages/Pricing';
-import FAQ from './pages/FAQ';
-import Testimonials from './pages/Testimonials';
-import Governance from './pages/Governance';
-import Facilities from './pages/Facilities';
-import Compliance from './pages/Compliance';
-import TermsOfUse from './pages/TermsOfUse';
-import PrivacyPolicy from './pages/PrivacyPolicy';
-import { User } from './types';
+import Auth from './pages/Auth';
+import SuperAdminDashboard from './pages/dashboards/SuperAdminDashboard';
+import AffiliateDashboard from './pages/dashboards/AffiliateDashboard';
+import Dashboard from './pages/Dashboard';
 
-// Wrapper for protected routes
-interface ProtectedRouteProps {
-  user: User | null;
-  children: React.ReactNode;
-}
+const PrivateRoute = ({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: string[] }) => {
+  const { isAuthenticated, user, loading } = useAuth();
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ user, children }) => {
-  if (!user) {
+  if (loading) return null;
+
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
+
+  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
+    return <Navigate to="/" replace />;
+  }
+
   return <>{children}</>;
 };
 
-const App: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
-
-  const handleLogin = (loggedInUser: User) => {
-    setUser(loggedInUser);
-  };
-
-  const handleLogout = () => {
-    setUser(null);
-  };
-
+function App() {
   return (
-    <Router>
-      <Routes>
-        {/* Public Routes */}
-        <Route 
-          path="/" 
-          element={<LandingPage user={user} />} 
-        />
-        <Route 
-          path="/governance-solutions" 
-          element={<GovernanceSales user={user} />} 
-        />
-        <Route 
-          path="/login" 
-          element={
-            user ? <Navigate to="/dashboard" /> : <Auth onLogin={handleLogin} />
-          } 
-        />
-        <Route path="/blog" element={<Blog />} />
-        <Route path="/blog/:slug" element={<Blog />} />
-        <Route path="/pricing" element={<Pricing />} />
-        <Route path="/faq" element={<FAQ />} />
-        <Route path="/testimonials" element={<Testimonials />} />
-        <Route path="/compliance" element={<Compliance />} />
-        <Route path="/terms" element={<TermsOfUse />} />
-        <Route path="/privacy" element={<PrivacyPolicy />} />
+    <AuthProvider>
+      <Router>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<Auth />} />
 
-        {/* Protected Routes - Wrapped in Layout */}
-        <Route path="/dashboard" element={
-          <ProtectedRoute user={user}>
-            <Layout user={user} onLogout={handleLogout}>
-              <Dashboard user={user} />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        
-        <Route path="/governance" element={
-          <ProtectedRoute user={user}>
-            <Layout user={user} onLogout={handleLogout}>
-              <Governance user={user} />
-            </Layout>
-          </ProtectedRoute>
-        } />
+          <Route 
+            path="/dashboard" 
+            element={
+              <PrivateRoute allowedRoles={['MORADOR', 'SINDICO', 'ADM_CONDO']}>
+                <Layout><Dashboard user={null} /></Layout>
+              </PrivateRoute>
+            } 
+          />
 
-        <Route path="/facilities" element={
-          <ProtectedRoute user={user}>
-            <Layout user={user} onLogout={handleLogout}>
-              <Facilities user={user} />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        
-        <Route path="/assemblies" element={
-          <ProtectedRoute user={user}>
-            <Layout user={user} onLogout={handleLogout}>
-              <AssemblyList user={user} />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        
-        <Route path="/create-assembly" element={
-          <ProtectedRoute user={user}>
-            <Layout user={user} onLogout={handleLogout}>
-              {user?.role === 'MANAGER' ? <CreateAssembly /> : <Navigate to="/assemblies" />}
-            </Layout>
-          </ProtectedRoute>
-        } />
-        
-        <Route path="/assembly/:id" element={
-          <ProtectedRoute user={user}>
-            <Layout user={user} onLogout={handleLogout}>
-              <VotingRoom user={user} />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        
-        <Route path="/reports" element={
-          <ProtectedRoute user={user}>
-            <Layout user={user} onLogout={handleLogout}>
-              <Reports />
-            </Layout>
-          </ProtectedRoute>
-        } />
+          <Route 
+            path="/admin/dashboard" 
+            element={
+              <PrivateRoute allowedRoles={['ADMIN']}>
+                <Layout><SuperAdminDashboard /></Layout>
+              </PrivateRoute>
+            } 
+          />
 
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
-    </Router>
+          <Route 
+            path="/affiliate/dashboard" 
+            element={
+              <PrivateRoute allowedRoles={['AFILIADO']}>
+                <Layout><AffiliateDashboard /></Layout>
+              </PrivateRoute>
+            } 
+          />
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Router>
+    </AuthProvider>
   );
-};
+}
 
 export default App;

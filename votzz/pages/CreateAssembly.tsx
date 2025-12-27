@@ -1,9 +1,8 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, Calendar, Type, FileText, ArrowLeft, Loader2, Eye, EyeOff } from 'lucide-react';
 import { generateAssemblyDescription } from '../services/geminiService';
-import { MockService } from '../services/mockDataService';
+import api from '../services/api'; 
 import { AssemblyStatus, VoteType, VotePrivacy } from '../types';
 
 const CreateAssembly: React.FC = () => {
@@ -35,25 +34,29 @@ const CreateAssembly: React.FC = () => {
     e.preventDefault();
     setSaving(true);
     
-    // Default options based on type
-    let options = [
-        { id: '1', label: 'Sim' }, 
-        { id: '2', label: 'Não' }, 
-        { id: '3', label: 'Abstenção' }
-    ];
+    try {
+        let options = [
+            { id: '1', label: 'Sim' }, 
+            { id: '2', label: 'Não' }, 
+            { id: '3', label: 'Abstenção' }
+        ];
 
-    if (formData.voteType === VoteType.MULTIPLE_CHOICE) {
-        options = [{ id: '1', label: 'Opção A' }, { id: '2', label: 'Opção B' }]; // Simplification for demo
+        if (formData.voteType === VoteType.MULTIPLE_CHOICE) {
+            options = [{ id: '1', label: 'Opção A' }, { id: '2', label: 'Opção B' }];
+        }
+
+        await api.post('/assemblies', {
+            ...formData,
+            status: AssemblyStatus.OPEN,
+            options
+        });
+
+        navigate('/assemblies');
+    } catch (err) {
+        alert("Erro ao criar assembleia no banco real.");
+    } finally {
+        setSaving(false);
     }
-
-    await MockService.createAssembly({
-        ...formData,
-        status: AssemblyStatus.OPEN,
-        options
-    });
-
-    setSaving(false);
-    navigate('/assemblies');
   };
 
   return (
@@ -107,9 +110,6 @@ const CreateAssembly: React.FC = () => {
                 placeholder="Descreva os detalhes para os votantes..."
                 required
               />
-              <p className="text-xs text-slate-400 mt-1">
-                A IA ajuda a criar textos formais, mas você deve revisar o conteúdo antes de publicar.
-              </p>
             </div>
 
             <div>
@@ -155,19 +155,6 @@ const CreateAssembly: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Quórum Necessário</label>
-              <select 
-                value={formData.quorumType}
-                onChange={e => setFormData({...formData, quorumType: e.target.value as any})}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white"
-              >
-                <option value="SIMPLE">Maioria Simples (Presentes)</option>
-                <option value="ABSOLUTE">Maioria Absoluta (Total Unidades)</option>
-                <option value="QUALIFIED">Qualificado (2/3)</option>
-              </select>
-            </div>
-
-            <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Data Início</label>
               <input 
                 type="datetime-local"
@@ -177,7 +164,6 @@ const CreateAssembly: React.FC = () => {
                 required
               />
             </div>
-
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Data Fim</label>
               <input 

@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Download, Search } from 'lucide-react';
-import { MockService } from '../services/mockDataService';
+import api from '../services/api';
 import { AuditLog } from '../types';
 
 const Reports: React.FC = () => {
   const [logs, setLogs] = useState<AuditLog[]>([]);
 
   useEffect(() => {
-    MockService.getAuditLogs().then(setLogs);
+    api.get('/admin/audit-logs').then(res => setLogs(res.data || []));
   }, []);
 
   return (
@@ -25,7 +25,7 @@ const Reports: React.FC = () => {
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-          <h3 className="font-semibold text-slate-700">Registro de Atividades (Audit Trail)</h3>
+          <h3 className="font-semibold text-slate-700">Registro de Atividades</h3>
           <div className="relative">
              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
              <input 
@@ -37,7 +37,7 @@ const Reports: React.FC = () => {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50 text-slate-500 uppercase font-medium text-xs">
+            <thead className="bg-slate-50 text-slate-500 uppercase text-xs">
               <tr>
                 <th className="px-6 py-3">Timestamp</th>
                 <th className="px-6 py-3">Ação</th>
@@ -47,12 +47,12 @@ const Reports: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {logs.map((log) => (
-                <tr key={log.id} className="hover:bg-slate-50 transition-colors">
+                <tr key={log.id} className="hover:bg-slate-50">
                   <td className="px-6 py-4 font-mono text-slate-600">
                     {new Date(log.timestamp).toLocaleString()}
                   </td>
                   <td className="px-6 py-4">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                    <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
                       {log.action}
                     </span>
                   </td>
@@ -60,11 +60,6 @@ const Reports: React.FC = () => {
                   <td className="px-6 py-4 text-slate-800">{log.details}</td>
                 </tr>
               ))}
-              {logs.length === 0 && (
-                 <tr>
-                   <td colSpan={4} className="px-6 py-8 text-center text-slate-500">Nenhum registro de auditoria encontrado.</td>
-                 </tr>
-              )}
             </tbody>
           </table>
         </div>
