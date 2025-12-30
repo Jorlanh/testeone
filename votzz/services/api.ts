@@ -2,27 +2,45 @@
 import axios from 'axios';
 
 export const api = axios.create({
-  // Dica: Em produção, use process.env.REACT_APP_API_URL
-  baseURL: 'http://localhost:8080/api',
+  // Adicionado (import.meta as any) para evitar erro de compilação TS
+  baseURL: (import.meta as any).env.VITE_API_URL || 'http://localhost:8080/api',
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
+// Interceptor de Requisição: Adiciona Token e Tenant ID
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('votzz_token');
+  const token = localStorage.getItem('@Votzz:token');
+  const storedUser = localStorage.getItem('@Votzz:user');
+
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+
+  if (storedUser) {
+    try {
+      const user = JSON.parse(storedUser);
+      if (user.tenantId) {
+        config.headers['X-Tenant-ID'] = user.tenantId;
+      }
+    } catch (e) {
+      console.error("Erro ao parsear usuário do localStorage", e);
+    }
+  }
+
   return config;
+}, (error) => {
+  return Promise.reject(error);
 });
 
+// Interceptor de Resposta: Trata erros globais
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Evita loop de redirecionamento se já estiver na tela de auth
     if (error.response?.status === 401 && !window.location.hash.includes('auth')) {
-      localStorage.clear();
+      localStorage.removeItem('@Votzz:token');
+      localStorage.removeItem('@Votzz:user');
       window.location.href = '#/auth';
     }
     return Promise.reject(error);

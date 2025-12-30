@@ -1,3 +1,4 @@
+// App.tsx completo e corrigido
 import React from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -31,7 +32,7 @@ import Governance from './pages/Governance';
 import Reports from './pages/Reports';
 import Spaces from './pages/Spaces'; 
 import Profile from './pages/Profile'; 
-import Tickets from './pages/Tickets'; // [NOVO] Importação da página de Tickets
+import Tickets from './pages/Tickets';
 
 // Componente de Proteção de Rotas
 const PrivateRoute = ({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: string[] }) => {
@@ -43,7 +44,6 @@ const PrivateRoute = ({ children, allowedRoles }: { children: React.ReactNode, a
     return <Navigate to="/login" replace />;
   }
 
-  // Verifica permissões
   if (allowedRoles && user && !allowedRoles.includes(user.role)) {
     if (user.role === 'ADMIN') return <Navigate to="/admin/dashboard" replace />;
     if (user.role === 'AFILIADO') return <Navigate to="/affiliate/dashboard" replace />;
@@ -75,79 +75,79 @@ function App() {
           <Route path="/register-condo" element={<CondoRegister />} />
           <Route path="/affiliate/register" element={<AffiliateRegister />} />
 
-          {/* --- ÁREA LOGADA (MORADOR / SÍNDICO) --- */}
+          {/* --- ÁREA LOGADA --- */}
+          {/* CORREÇÃO: Removido user={null} e onLogout dos Layouts */}
           
           <Route path="/dashboard" element={
             <PrivateRoute allowedRoles={['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER']}>
-              <Layout user={null} onLogout={() => {}}><Dashboard user={null} /></Layout>
+              <Layout><Dashboard user={null} /></Layout>
             </PrivateRoute>
           } />
 
           <Route path="/assemblies" element={
             <PrivateRoute allowedRoles={['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER']}>
-              <Layout user={null} onLogout={() => {}}><AssemblyList user={null} /></Layout>
+              <Layout><AssemblyList user={null} /></Layout>
             </PrivateRoute>
           } />
 
           <Route path="/create-assembly" element={
             <PrivateRoute allowedRoles={['SINDICO', 'MANAGER', 'ADM_CONDO']}>
-              <Layout user={null} onLogout={() => {}}><CreateAssembly /></Layout>
+              <Layout><CreateAssembly /></Layout>
             </PrivateRoute>
           } />
 
           <Route path="/assembly/:id" element={
             <PrivateRoute allowedRoles={['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER']}>
-              <Layout user={null} onLogout={() => {}}><VotingRoom /></Layout> 
+              <Layout><VotingRoom /></Layout> 
             </PrivateRoute>
           } />
 
           <Route path="/governance" element={
             <PrivateRoute allowedRoles={['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER']}>
-              <Layout user={null} onLogout={() => {}}><Governance user={null} /></Layout>
+              <Layout><Governance user={null} /></Layout>
             </PrivateRoute>
           } />
 
           <Route path="/spaces" element={
             <PrivateRoute allowedRoles={['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER']}>
-              <Layout user={null} onLogout={() => {}}><Spaces user={null}/></Layout>
+              <Layout><Spaces user={null}/></Layout>
             </PrivateRoute>
           } />
 
-          {/* [NOVO] Rota para Chamados (Tickets) */}
           <Route path="/tickets" element={
             <PrivateRoute allowedRoles={['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER']}>
-               <Layout user={null} onLogout={() => {}}><Tickets /></Layout>
+               <Layout><Tickets /></Layout>
             </PrivateRoute>
           } />
 
           <Route path="/profile" element={
             <PrivateRoute allowedRoles={['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER', 'ADMIN', 'AFILIADO']}>
-              <Layout user={null} onLogout={() => {}}><Profile /></Layout>
+              <Layout><Profile /></Layout>
             </PrivateRoute>
           } />
 
           <Route path="/reports" element={
             <PrivateRoute allowedRoles={['SINDICO', 'MANAGER', 'ADM_CONDO']}>
-              <Layout user={null} onLogout={() => {}}><Reports /></Layout>
+              <Layout><Reports /></Layout>
             </PrivateRoute>
           } />
 
           <Route path="/subscription/renew" element={
             <PrivateRoute allowedRoles={['SINDICO', 'MANAGER']}>
-                <Layout user={null} onLogout={() => {}}><SubscriptionRenovation /></Layout>
+                <Layout><SubscriptionRenovation /></Layout>
             </PrivateRoute>
           } />
 
           {/* --- ADMINS --- */}
           <Route path="/admin/dashboard" element={
             <PrivateRoute allowedRoles={['ADMIN']}>
-              <Layout user={null} onLogout={() => {}}><SuperAdminDashboard /></Layout>
+              <Layout><SuperAdminDashboard /></Layout>
             </PrivateRoute>
           } />
 
           <Route path="/affiliate/dashboard" element={
             <PrivateRoute allowedRoles={['AFILIADO']}>
-              <Layout user={null} onLogout={() => {}}><AffiliateDashboard /></Layout>
+              <Layout><AffiliateDashboard /></Layout>
             </PrivateRoute>
           } />
 
