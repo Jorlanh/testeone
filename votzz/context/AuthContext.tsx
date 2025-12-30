@@ -1,71 +1,70 @@
-// src/context/AuthContext.tsx
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { AuthContextType, LoginResponse, User } from '../types';
+import React, { createContext, useState, useEffect, useContext } from 'react';
+import { LoginResponse, User } from '../types';
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+interface AuthContextData {
+  user: User | null;
+  isAuthenticated: boolean;
+  login: (data: LoginResponse) => void;
+  signOut: () => void; // ou 'logout', mantenha o padrão que você usa
+  loading: boolean;
+}
 
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
+const AuthContext = createContext<AuthContextData>({} as AuthContextData);
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Recupera sessão ao recarregar a página (F5)
   useEffect(() => {
-    const storedToken = localStorage.getItem('votzz_token');
-    const storedUser = localStorage.getItem('votzz_user');
-    
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (e) {
-        console.error("Erro ao recuperar usuário do storage", e);
-        localStorage.clear();
-      }
+    // Ao carregar a página, recupera o usuário salvo
+    const storedUser = localStorage.getItem('@Votzz:user');
+    const storedToken = localStorage.getItem('@Votzz:token');
+
+    if (storedUser && storedToken) {
+      setUser(JSON.parse(storedUser));
     }
     setLoading(false);
   }, []);
 
   const login = (data: LoginResponse) => {
-    // Mapeia os dados vindos do Backend Java para o objeto User do Frontend
-    const userData: User = {
-      id: data.id,            
-      nome: data.nome,
-      name: data.nome,        // Compatibilidade
-      email: data.email,
-      role: data.role,        
-      tenantId: data.tenantId,
-      
-      // Inicializa campos vazios para evitar undefined
-      cpf: '',
-      whatsapp: '',
-      unit: '',
-      unidade: '',
-      bloco: ''
+    // [CORREÇÃO] Mapeamento Explícito para garantir que Bloco e Unidade sejam salvos
+    const userToSave: User = {
+        id: data.id,
+        nome: data.nome,
+        name: data.nome, // Compatibilidade
+        email: data.email,
+        role: data.role,
+        tenantId: data.tenantId,
+        
+        // AQUI ESTÁ O SEGREDO: Pegando os dados novos do Backend
+        bloco: data.bloco,
+        unidade: data.unidade,
+        cpf: data.cpf,
+        
+        // Garantindo compatibilidade com campos em inglês se houver
+        block: data.bloco,
+        unit: data.unidade,
+        whatsapp: '' // Se o login não retorna, fica vazio ou pega de outro lugar
     };
-    
-    setUser(userData);
-    setToken(data.token);
-    localStorage.setItem('votzz_token', data.token);
-    localStorage.setItem('votzz_user', JSON.stringify(userData));
+
+    setUser(userToSave);
+
+    // Salva no LocalStorage para persistir no F5
+    localStorage.setItem('@Votzz:user', JSON.stringify(userToSave));
+    localStorage.setItem('@Votzz:token', data.token);
   };
 
-  const logout = () => {
+  const signOut = () => {
+    localStorage.removeItem('@Votzz:user');
+    localStorage.removeItem('@Votzz:token');
     setUser(null);
-    setToken(null);
-    localStorage.clear();
-    window.location.href = '#/auth'; 
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, isAuthenticated: !!user, loading, login, logout }}>
-      {!loading && children}
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, login, signOut, loading }}>
+      {children}
     </AuthContext.Provider>
   );
 };
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth deve ser usado dentro de um AuthProvider');
-  return context;
-};
+export const useAuth = () => useContext(AuthContext);

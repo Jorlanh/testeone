@@ -25,16 +25,17 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // DEBUG: Isso vai mostrar no console (F12) exatamente o que o backend mandou
+  // DEBUG: Para conferir se os dados estão chegando
   useEffect(() => {
     if (user) {
-        console.log("DEBUG LAYOUT - Dados do Usuário Recebidos:", user);
+        console.log("DEBUG LAYOUT - Usuário:", user);
     }
   }, [user]);
 
   const handleLogout = () => {
     if (signOut) signOut();
-    navigate('/login');
+    // [CORREÇÃO] Redireciona para a Landing Page (/) em vez do Login
+    navigate('/'); 
   };
 
   const isActive = (path: string) => location.pathname === path;
@@ -49,23 +50,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (user.role === 'SINDICO') return 'Síndico Profissional';
     if (user.role === 'ADM_CONDO' || user.role === 'MANAGER') return 'Administrador';
     
-    // Lógica Blindada para Morador
-    // Tenta pegar todas as variações possíveis que podem vir do banco
-    const bloco = user.bloco || user.block || user.building || '';
-    const unidade = user.unidade || user.unit || user.apartment || user.apt || '';
+    // Lógica para Morador
+    const bloco = user.bloco || user.block || '';
+    const unidade = user.unidade || user.unit || '';
 
-    // Se tiver os dois dados
+    // Formato: "B [bloco] e Und [unidade]"
     if (bloco && unidade) {
-        return `Bl. ${bloco} - Ap. ${unidade}`;
+        return `B ${bloco} e Und ${unidade}`;
     }
     
-    // Se tiver só unidade (comum em prédios sem bloco)
     if (unidade && !bloco) {
-        return `Ap. ${unidade}`;
+        return `Und ${unidade}`;
     }
 
-    // Se chegou aqui, é porque os campos vieram null/undefined do Backend
-    if (user.role === 'MORADOR') return 'Morador (Sem Unidade)';
+    if (user.role === 'MORADOR') return 'Morador';
     
     return 'Visitante';
   };
@@ -153,7 +151,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               <p className="text-white font-bold text-sm truncate" title={userName}>
                 {userName.split(' ')[0]}
               </p>
-              {/* ONDE A MÁGICA ACONTECE */}
               <p className="text-xs text-emerald-400 truncate font-medium" title={userSubtitle}>
                 {userSubtitle}
               </p>
