@@ -1,23 +1,30 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
-  XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area 
+  XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area 
 } from 'recharts';
 import { 
   Users, FileText, CheckCircle, AlertTriangle, Plus, Megaphone, TrendingUp, Clock, ArrowRight, ShieldAlert, Calendar, Wallet, Shield
 } from 'lucide-react';
 import api from '../services/api'; 
 import { Assembly, User } from '../types';
+import { useAuth } from '../context/AuthContext'; // [CORREÇÃO] Importando useAuth
+import { SubscriptionStatus } from '../components/SubscriptionStatus';
 
 interface DashboardProps {
-  user: User | null;
+  user: User | null; // Mantido para compatibilidade, mas preferimos usar o contexto
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ user }) => {
+const Dashboard: React.FC<DashboardProps> = ({ user: propUser }) => {
+  const { user: contextUser } = useAuth(); // [CORREÇÃO] Pega usuário do contexto para ter dados atualizados
+  const user = contextUser || propUser; // Prioriza contexto
+  
+  const navigate = useNavigate();
   const [assemblies, setAssemblies] = useState<Assembly[]>([]);
   const [financial, setFinancial] = useState({ balance: 0, lastUpdate: '' });
   const [condoUsers, setCondoUsers] = useState<User[]>([]);
   const [showUserList, setShowUserList] = useState(false);
+  const [expirationDate, setExpirationDate] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -25,14 +32,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
 
   const loadData = async () => {
     try {
-      const [assData, finData, usersData] = await Promise.all([
+      const [assData, finData, usersData, tenantData] = await Promise.all([
         api.get('/assemblies'),
         api.get('/financial/balance'),
-        api.get('/users')
+        api.get('/users'),
+        api.get('/tenants/my-subscription')
       ]);
+      
       setAssemblies(assData.data || []);
       setFinancial(finData.data || { balance: 0, lastUpdate: 'N/A' });
       setCondoUsers(usersData.data || []);
+      
+      if (tenantData.data?.expirationDate) {
+        setExpirationDate(tenantData.data.expirationDate);
+      }
     } catch (e) {
       console.error("Erro ao carregar dados do backend");
     }
@@ -46,6 +59,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     }
   };
 
+  const handleRenew = () => {
+    navigate('/subscription/renew');
+  };
+
   const activeAssemblies = assemblies.filter(a => a.status === 'OPEN');
   const totalVotes = assemblies.reduce((acc, curr) => acc + (curr.votes?.length || 0), 0);
 
@@ -54,24 +71,32 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     { name: 'Abr', votos: 65 }, { name: 'Mai', votos: 45 }, { name: 'Jun', votos: 80 },
   ];
 
-  const engagementData = [
-    { name: 'Votaram', value: 78, color: '#10b981' }, 
-    { name: 'Pendentes', value: 22, color: '#e2e8f0' }
-  ];
-
   const criticalAssemblies = activeAssemblies.filter(a => {
     const hoursLeft = (new Date(a.endDate).getTime() - Date.now()) / 36e5;
     return hoursLeft < 48 && hoursLeft > 0;
   });
 
-  const isManager = user?.role === 'MANAGER' || user?.role === 'SINDICO';
+  const isManager = user?.role === 'MANAGER' || user?.role === 'SINDICO' || user?.role === 'ADM_CONDO';
+
+  // [CORREÇÃO] Nome de exibição robusto
+  const displayName = user?.nome || user?.name || user?.email?.split('@')[0] || 'Morador';
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
+    <div className="space-y-8 animate-in fade-in duration-500 pb-20">
+      
+      {expirationDate && (
+        <SubscriptionStatus 
+            expirationDate={expirationDate} 
+            userRole={user?.role || 'MORADOR'} 
+            onRenewClick={handleRenew}
+        />
+      )}
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">
-            {isManager ? `Olá, Síndico ${user?.nome?.split(' ')[0] || 'Gestor'}` : `Olá, ${user?.nome?.split(' ')[0] || 'Morador'}`}
+             {/* [CORREÇÃO] Saudação usando o nome processado */}
+             Olá, {displayName.split(' ')[0]}
           </h1>
           <p className="text-slate-500 flex items-center gap-2">
             <Calendar className="w-4 h-4" />
@@ -253,12 +278,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
         </div>
 
         <div className="space-y-6">
-            <Link to="/governance" className="block bg-blue-600 p-6 rounded-2xl text-white shadow-lg hover:bg-blue-700 transition-all group">
+            {/* [ATUALIZADO] Botão leva para a página de Chamados */}
+            <button 
+              onClick={() => navigate('/tickets')}
+              className="w-full block bg-blue-600 p-6 rounded-2xl text-white shadow-lg hover:bg-blue-700 transition-all group text-left"
+            >
               <h3 className="font-bold flex items-center justify-between">
                 Abrir Chamado <ArrowRight className="group-hover:translate-x-1 transition-transform" />
               </h3>
               <p className="text-blue-100 text-xs mt-2">Relate problemas técnicos ou de convivência à administração.</p>
-            </Link>
+            </button>
 
            {criticalAssemblies.length > 0 ? (
              <div className="bg-orange-50 p-5 rounded-xl border border-orange-100">

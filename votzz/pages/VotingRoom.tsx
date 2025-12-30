@@ -7,8 +7,10 @@ import {
 import api from '../services/api'; 
 import { analyzeSentiment } from '../services/geminiService';
 import { User, VotePrivacy, AssemblyStatus } from '../types';
+import { useAuth } from '../context/AuthContext'; // Importar AuthContext
 
-const VotingRoom: React.FC<{ user: User }> = ({ user }) => {
+const VotingRoom: React.FC = () => { // Removemos prop user, pegamos do hook
+  const { user } = useAuth(); // Pegar user do contexto
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [assembly, setAssembly] = useState<any>(null);
@@ -29,13 +31,13 @@ const VotingRoom: React.FC<{ user: User }> = ({ user }) => {
   }, [id]);
 
   const loadData = async () => {
-    if (!id) return;
+    if (!id || !user) return;
     try {
       setError(null);
       const response = await api.get(`/assemblies/${id}`);
       const data = response.data;
       setAssembly(data);
-      const userVote = data.pollVotes?.find((v: any) => v.userId === user.id);
+      const userVote = data.votes?.find((v: any) => v.userId === user.id);
       if (userVote) {
         setHasVoted(true);
         setVoteReceipt(userVote.id || "REGISTRADO");
@@ -46,7 +48,7 @@ const VotingRoom: React.FC<{ user: User }> = ({ user }) => {
   };
 
   const handleVote = async () => {
-    if (!id || !selectedOption) return;
+    if (!id || !selectedOption || !user) return;
     try {
       const response = await api.post(`/assemblies/${id}/vote`, {
         optionId: selectedOption,
@@ -55,12 +57,12 @@ const VotingRoom: React.FC<{ user: User }> = ({ user }) => {
       setHasVoted(true);
       setVoteReceipt(response.data.id || "REGISTRADO");
       loadData();
-    } catch (e: any) { alert("Erro ao votar"); }
+    } catch (e: any) { alert("Erro ao votar: " + e.response?.data?.message || "Tente novamente."); }
   };
 
   const handleSendChat = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatMsg.trim()) return;
+    if (!chatMsg.trim() || !user) return;
     await api.post(`/chat/assemblies/${id}`, { 
         content: chatMsg, userId: user.id, userName: user.nome 
     });
@@ -78,20 +80,11 @@ const VotingRoom: React.FC<{ user: User }> = ({ user }) => {
     } catch(e: any) { alert("Erro ao encerrar"); } finally { setClosing(false); }
   };
 
-  const runAnalysis = async () => {
-    if (!assembly?.messages) return;
-    const messages = assembly.messages.map((c: any) => `${c.userName}: ${c.content}`);
-    setAiAnalysis("Analisando...");
-    const result = await analyzeSentiment(messages);
-    setAiAnalysis(result);
-  }
-
+  if (!user) return <div>Carregando usuário...</div>;
   if (error) return <div className="p-20 text-center"><XCircle className="w-16 h-16 text-red-500 mx-auto" /><h2 className="text-2xl font-bold">{error}</h2></div>;
   if (!assembly) return <div className="p-8 text-center text-slate-500"><Clock className="w-8 h-8 mx-auto mb-2 animate-spin"/> Carregando sala real...</div>;
 
-  const isSecret = assembly.votePrivacy === VotePrivacy.SECRET;
   const isManager = user.role === 'MANAGER' || user.role === 'SINDICO';
-  const isClosed = assembly.status === 'ENCERRADA' || assembly.status === AssemblyStatus.CLOSED;
 
   return (
     <div className="space-y-6 pb-20">
@@ -111,7 +104,7 @@ const VotingRoom: React.FC<{ user: User }> = ({ user }) => {
              <h3 className="text-lg font-bold mb-4">Pauta</h3>
              <p className="text-slate-600 whitespace-pre-line">{assembly.description}</p>
            </div>
-           {activeTab === 'MANAGE' && isManager && (
+           {isManager && (
              <button onClick={handleCloseAssembly} disabled={closing} className="w-full bg-red-600 text-white py-4 rounded-2xl font-bold">
                {closing ? 'Processando...' : 'Encerrar Assembleia'}
              </button>
@@ -122,7 +115,11 @@ const VotingRoom: React.FC<{ user: User }> = ({ user }) => {
           <div className="bg-white p-6 rounded-3xl border shadow-xl">
             <h3 className="font-black mb-6 text-slate-800">Cédula Digital</h3>
             {hasVoted ? (
-              <div className="text-center py-8"><FileCheck className="mx-auto text-emerald-600" size={48}/><h4 className="font-bold">Voto Confirmado</h4></div>
+              <div className="text-center py-8">
+                  <FileCheck className="mx-auto text-emerald-600" size={48}/>
+                  <h4 className="font-bold">Voto Confirmado</h4>
+                  <p className="text-xs text-slate-400 mt-2">Recibo: {voteReceipt}</p>
+              </div>
             ) : (
               <div className="space-y-3">
                 {(assembly.pollOptions || assembly.options)?.map((opt: any) => (

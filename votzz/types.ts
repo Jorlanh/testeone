@@ -2,29 +2,50 @@
 
 export type UserRole = 'ADMIN' | 'SINDICO' | 'ADM_CONDO' | 'MORADOR' | 'AFILIADO' | 'MANAGER';
 
+// Login Request
+export interface LoginRequest {
+  login: string; // Pode ser email ou CPF
+  password: string;
+}
+
+// Interface principal do Usuário (Usada no Contexto e Components)
 export interface User {
   id: string;
-  nome: string;      // Backend Java
-  name: string;      // Compatibilidade Frontend antigo
+  nome: string;      
+  name: string;      // Compatibilidade
   email: string;
-  cpf: string;
-  unidade?: string;  // Backend Java
-  unit?: string;     // Compatibilidade Frontend antigo
+  cpf?: string;      
+  
+  // Dados de Unidade
+  unidade?: string;  
+  unit?: string;     
+  bloco?: string;    
+  block?: string;    // Compatibilidade
+  
   whatsapp: string;
-  phone?: string;    // Compatibilidade
+  phone?: string;    
   role: UserRole;
   tenantId?: string | null;
   fraction?: number;
 }
 
+// Resposta do Login (TEM QUE BATER COM O DTO DO JAVA)
 export interface LoginResponse {
   token: string;
+  type?: string;     
+  id: string;        
   nome: string;
   email: string;
   role: UserRole;
   tenantId?: string | null;
+  
+  // [NOVO] Campos essenciais para o Layout exibir "Bl. X - Ap. Y"
+  bloco?: string;
+  unidade?: string;
+  cpf?: string;
 }
 
+// Auth Context
 export interface AuthContextType {
   user: User | null;
   token: string | null;
@@ -34,7 +55,7 @@ export interface AuthContextType {
   logout: () => void;
 }
 
-// --- NEGÓCIO E GOVERNANÇA ---
+// --- Enumerações de Negócio ---
 export enum VoteType {
   YES_NO_ABSTAIN = 'YES_NO_ABSTAIN',
   MULTIPLE_CHOICE = 'MULTIPLE_CHOICE',
@@ -53,10 +74,11 @@ export enum AssemblyStatus {
   AGENDADA = 'AGENDADA'
 }
 
+// --- Interfaces de Negócio ---
 export interface Assembly {
   id: string;
   title: string;
-  titulo?: string; // Backend
+  titulo?: string;
   description: string;
   status: AssemblyStatus;
   startDate: string;
@@ -139,25 +161,4 @@ export interface Announcement {
   targetValue?: string;
   readBy: string[];
   requiresConfirmation: boolean;
-}
-
-export interface GovernanceActivity {
-  id: string;
-  type: 'VOTE' | 'POLL' | 'DOC' | 'COMMUNICATION' | 'BOOKING';
-  description: string;
-  date: string;
-  user: string;
-}
-
-export interface BlogPost {
-  id: string;
-  slug: string;
-  title: string;
-  excerpt: string;
-  content: string;
-  author: string;
-  date: string;
-  category: string;
-  imageUrl: string;
-  tags: string[];
 }

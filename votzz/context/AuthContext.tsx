@@ -9,29 +9,39 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Recupera sessão ao recarregar a página (F5)
   useEffect(() => {
     const storedToken = localStorage.getItem('votzz_token');
     const storedUser = localStorage.getItem('votzz_user');
+    
     if (storedToken && storedUser) {
       setToken(storedToken);
-      setUser(JSON.parse(storedUser));
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (e) {
+        console.error("Erro ao recuperar usuário do storage", e);
+        localStorage.clear();
+      }
     }
     setLoading(false);
   }, []);
 
   const login = (data: LoginResponse) => {
-    // Mapeia os dados do Backend Java para a interface User completa
+    // Mapeia os dados vindos do Backend Java para o objeto User do Frontend
     const userData: User = {
-      id: 'id-extracted-from-token', 
+      id: data.id,            
       nome: data.nome,
-      name: data.nome, // Preenche ambos para compatibilidade
+      name: data.nome,        // Compatibilidade
       email: data.email,
-      role: data.role,
+      role: data.role,        
       tenantId: data.tenantId,
+      
+      // Inicializa campos vazios para evitar undefined
       cpf: '',
       whatsapp: '',
       unit: '',
-      unidade: ''
+      unidade: '',
+      bloco: ''
     };
     
     setUser(userData);
@@ -44,7 +54,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
     setToken(null);
     localStorage.clear();
-    window.location.href = '#/login';
+    window.location.href = '#/auth'; 
   };
 
   return (

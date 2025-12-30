@@ -1,336 +1,278 @@
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Check, Calculator, Building, Crown, Info, Smartphone } from 'lucide-react';
+import Layout from '../components/Layout'; 
 
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { 
-  Check, 
-  X, 
-  HelpCircle, 
-  ChevronDown, 
-  ChevronUp, 
-  Menu, 
-  X as CloseIcon, 
-  ShieldCheck, 
-  Zap, 
-  Headphones,
-  ArrowRight,
-  ChevronRight,
-  Star,
-  Crown
-} from 'lucide-react';
-import { Logo } from '../components/Logo';
+// IDs dos Planos
+const PLAN_IDS = {
+  ESSENCIAL: '11111111-1111-1111-1111-111111111111',
+  BUSINESS: '22222222-2222-2222-2222-222222222222',
+  CUSTOM: '33333333-3333-3333-3333-333333333333'
+};
 
-const PricingHeader: React.FC = () => {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isScrolled, setIsScrolled] = useState(false);
+// Lista de Benefícios Padrão (Atualizada com App)
+const COMMON_BENEFITS = [
+  "Aplicativo Moradores (iOS/Android)", // Novo Item
+  "Votação em Tempo Real",
+  "Assembleia Digital ao Vivo",
+  "Ata Automática",
+  "Auditoria Criptografada",
+  "Lista de Presença Digital",
+  "Convocações Digitais",
+  "Votos e Pautas Ilimitados",
+  "Acesso Moradores e Conselho",
+  "Dashboard Completo"
+];
 
-  useEffect(() => {
-    const handleScroll = () => setIsScrolled(window.scrollY > 20);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+export function Pricing() {
+  const navigate = useNavigate();
+  
+  // Começa com 50 unidades (Plano Business)
+  const [units, setUnits] = useState<number>(50); 
+  const [cycle, setCycle] = useState<'TRIMESTRAL' | 'ANUAL'>('ANUAL');
+  
+  // --- LÓGICA DE CÁLCULO GERAL ---
+  const calculatePrice = (inputUnits: number, selectedCycle: 'TRIMESTRAL' | 'ANUAL') => {
+    let monthlyBase = 0;
+    let planName = '';
+    let planId = '';
 
-  return (
-    <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled ? 'bg-white shadow-sm py-3' : 'bg-slate-900 text-white py-4'}`}>
-      <div className="max-w-7xl mx-auto px-4 flex justify-between items-center">
-        <Link to="/" className="hover:opacity-80 transition-opacity">
-          <Logo theme={isScrolled ? "dark" : "light"} />
-        </Link>
+    if (inputUnits <= 30) {
+      planName = 'Essencial';
+      monthlyBase = 190.00;
+      planId = PLAN_IDS.ESSENCIAL;
+    } else if (inputUnits <= 80) {
+      planName = 'Business';
+      monthlyBase = 490.00;
+      planId = PLAN_IDS.BUSINESS;
+    } else {
+      planName = 'Custom';
+      const extra = inputUnits - 80;
+      monthlyBase = 490.00 + (extra * 2.50);
+      planId = PLAN_IDS.CUSTOM;
+    }
 
-        {/* Desktop Nav */}
-        <nav className="hidden md:flex items-center space-x-8">
-          <Link to="/pricing" className={`text-sm font-bold ${isScrolled ? 'text-emerald-600' : 'text-white'}`}>Preços</Link>
-          <Link to="/blog" className={`text-sm font-medium ${isScrolled ? 'text-slate-600 hover:text-emerald-600' : 'text-slate-300 hover:text-white'}`}>Blog</Link>
-        </nav>
+    let finalPrice = 0;
+    if (selectedCycle === 'TRIMESTRAL') {
+      finalPrice = monthlyBase * 3;
+    } else {
+      finalPrice = (monthlyBase * 12) * 0.8;
+    }
 
-        <div className="hidden md:flex items-center gap-4">
-          <Link to="/login" className={`text-sm font-medium ${isScrolled ? 'text-emerald-600' : 'text-emerald-400'}`}>Entrar</Link>
-          <Link to="/login" state={{ isRegister: true }} className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-full text-sm font-bold transition-all shadow-md">
-            Começar Agora
-          </Link>
+    return { 
+      planName, 
+      finalPrice, 
+      planId,
+      monthlyEquivalent: finalPrice / (selectedCycle === 'TRIMESTRAL' ? 3 : 12)
+    };
+  };
+
+  // --- LÓGICA PARA EXIBIR PREÇOS FIXOS NOS CARDS INATIVOS ---
+  const getStaticPrice = (planType: 'Essencial' | 'Business') => {
+    let base = 0;
+    if (planType === 'Essencial') base = 190.00;
+    if (planType === 'Business') base = 490.00;
+
+    if (cycle === 'TRIMESTRAL') return base * 3;
+    return (base * 12) * 0.8;
+  };
+
+  const activePlan = calculatePrice(units, cycle);
+
+  const handleSubscribe = () => {
+    navigate('/register-condo', { 
+      state: { 
+        planId: activePlan.planId,
+        preFilledUnits: units,
+        preFilledCycle: cycle 
+      } 
+    });
+  };
+
+  // Componente de Benefícios
+  const BenefitsList = ({ isDark }: { isDark: boolean }) => (
+    <ul className={`space-y-3 text-sm mb-8 flex-1 text-left ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+      
+      {/* Destaque para o App */}
+      <li className="flex gap-2 items-start font-bold">
+        <Smartphone className="text-emerald-500 flex-shrink-0" size={18}/> 
+        <span>Aplicativo Votzz (iOS/Android)</span>
+      </li>
+
+      {COMMON_BENEFITS.slice(1).map((benefit, index) => (
+        <li key={index} className="flex gap-2 items-start">
+          <Check className="text-emerald-500 flex-shrink-0" size={18}/> 
+          <span>{benefit}</span>
+        </li>
+      ))}
+      
+      {/* Item Especial: Reservas */}
+      <li className="flex gap-2 items-start relative group cursor-help">
+        <Check className="text-emerald-500 flex-shrink-0" size={18}/>
+        <div>
+          <span className="font-bold block">Reservas (PIX/Boleto)</span>
+          <span className={`text-xs ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+            {cycle === 'ANUAL' 
+              ? 'Taxa Votzz ISENTA (Só tarifas bancárias)' 
+              : 'Taxa Votzz R$ 5,00 + Tarifas bancárias'}
+          </span>
         </div>
-
-        <button className="md:hidden p-2" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-          {mobileMenuOpen ? <CloseIcon className={isScrolled ? 'text-slate-800' : 'text-white'} /> : <Menu className={isScrolled ? 'text-slate-800' : 'text-white'} />}
-        </button>
-      </div>
-
-       {/* Mobile Menu */}
-       {mobileMenuOpen && (
-          <div className="md:hidden absolute top-full left-0 right-0 bg-white border-t border-slate-100 shadow-lg p-4 flex flex-col space-y-4 animate-in slide-in-from-top-2 text-slate-800">
-            <Link to="/pricing" className="py-2 font-bold text-emerald-600 border-b border-slate-50">Preços</Link>
-            <Link to="/blog" className="py-2 border-b border-slate-50">Blog</Link>
-            <Link to="/login" className="py-2 text-emerald-600">Entrar</Link>
-          </div>
-        )}
-    </header>
+        <Info size={16} className="text-slate-400 mt-1 ml-1" />
+        
+        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 p-3 bg-slate-800 text-white text-xs rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 border border-slate-700">
+          <p className="font-bold mb-1 text-emerald-400">Tarifas de Transação (Asaas):</p>
+          <ul className="list-disc pl-3 space-y-1 text-slate-300">
+            <li>PIX: R$ 1,99 (Recebe na hora)</li>
+            <li>Boleto: R$ 1,99 (Compensa em D+1)</li>
+          </ul>
+          {cycle === 'TRIMESTRAL' && (
+            <p className="mt-2 pt-2 border-t border-slate-600 text-amber-400">+ R$ 5,00 da Votzz por reserva realizada.</p>
+          )}
+        </div>
+      </li>
+    </ul>
   );
-};
 
-const FaqItem: React.FC<{ question: string; answer: string }> = ({ question, answer }) => {
-  const [isOpen, setIsOpen] = useState(false);
+  const getCardClasses = (planName: string) => {
+    const isActive = activePlan.planName === planName;
+    if (isActive) {
+      // Removido o scale-105 do card ativo para evitar conflito visual com a tag popular
+      return "pricing-card active-card bg-slate-900 text-white border-emerald-500 ring-2 ring-emerald-500/50 shadow-2xl z-10 relative overflow-hidden";
+    }
+    return "pricing-card bg-white text-slate-800 border-slate-200 opacity-80 hover:opacity-100 z-0 relative overflow-hidden";
+  };
 
-  return (
-    <div className="border-b border-slate-200">
-      <button 
-        className="w-full py-4 flex items-center justify-between text-left focus:outline-none"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        <span className="font-bold text-slate-800">{question}</span>
-        {isOpen ? <ChevronUp className="text-emerald-600" /> : <ChevronDown className="text-slate-400" />}
-      </button>
-      <div className={`overflow-hidden transition-all duration-300 ${isOpen ? 'max-h-48 pb-4' : 'max-h-0'}`}>
-        <p className="text-slate-600 text-sm leading-relaxed">{answer}</p>
-      </div>
-    </div>
-  );
-};
-
-const Pricing: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
-      <PricingHeader />
+      
+      <header className="bg-slate-900 py-6 text-center">
+         <h1 className="text-3xl font-bold text-white">Planos Votzz</h1>
+         <p className="text-slate-400">Transparência total para seu condomínio</p>
+      </header>
 
-      {/* Hero Section */}
-      <section className="pt-32 pb-16 bg-slate-900 text-white text-center px-4 relative overflow-hidden">
-        <div className="absolute inset-0 bg-emerald-600/10 opacity-30"></div>
-        <div className="absolute -top-20 -right-20 w-96 h-96 bg-emerald-500 rounded-full blur-[128px] opacity-20"></div>
-        
-        <h1 className="text-4xl md:text-5xl font-extrabold mb-6 relative z-10">
-          Planos Flexíveis para sua Gestão
-        </h1>
-        <p className="text-xl text-slate-300 max-w-2xl mx-auto relative z-10">
-          Transparência total. Sem taxas ocultas. Escolha a opção que melhor se adapta ao tamanho e necessidade do seu condomínio ou associação.
-        </p>
+      {/* Seção de Simulação - Removido rounded-b-[3rem] para tirar a curva */}
+      <section className="bg-slate-900 pb-20 pt-10 px-4 shadow-xl">
+        <div className="max-w-4xl mx-auto bg-slate-800 rounded-2xl p-6 border border-slate-700 shadow-2xl">
+          <div className="text-center mb-6">
+            <h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
+              <Calculator className="text-emerald-500" />
+              Simule o valor para seu condomínio
+            </h2>
+            <p className="text-slate-400 text-sm mt-2">O plano é selecionado automaticamente baseado no número de unidades.</p>
+          </div>
+
+          <div className="flex flex-col md:flex-row items-center justify-center gap-8">
+            <div className="w-full max-w-xs">
+              <label className="block text-emerald-400 font-bold mb-2 flex items-center gap-2">
+                <Building size={18} /> Quantas unidades (portas)?
+              </label>
+              <input 
+                type="number" 
+                min="1" 
+                value={units}
+                onChange={(e) => setUnits(Math.max(1, parseInt(e.target.value) || 0))}
+                className="w-full bg-slate-900 text-white text-3xl font-bold p-4 rounded-xl border border-slate-600 focus:border-emerald-500 outline-none text-center"
+              />
+            </div>
+
+            <div className="bg-slate-900 p-1 rounded-xl flex items-center border border-slate-700">
+              <button onClick={() => setCycle('TRIMESTRAL')} className={`px-6 py-3 rounded-lg font-bold transition-all ${cycle === 'TRIMESTRAL' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>Trimestral</button>
+              <button onClick={() => setCycle('ANUAL')} className={`px-6 py-3 rounded-lg font-bold transition-all flex flex-col items-center ${cycle === 'ANUAL' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>Anual <span className="text-[0.6rem] uppercase tracking-wider bg-emerald-800 px-1 rounded text-emerald-200">20% OFF</span></button>
+            </div>
+          </div>
+        </div>
       </section>
 
-      {/* Pricing Cards */}
-      <section className="py-16 px-4 -mt-10 relative z-20">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid md:grid-cols-3 gap-8 items-start">
+      <section className="py-12 px-4 -mt-10 relative z-10">
+        <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-6 items-start">
+
+          {/* CARD 1: ESSENCIAL */}
+          <div className={getCardClasses('Essencial')}>
+            <h3 className="text-xl font-bold mb-2">Essencial</h3>
+            <p className={`text-sm mb-4 ${activePlan.planName === 'Essencial' ? 'text-slate-400' : 'text-slate-500'}`}>Para condomínios pequenos</p>
+            <div className="text-4xl font-extrabold mb-1">
+              {/* Se for o plano ativo, usa o valor calculado (para mostrar coerência). Se não, mostra o valor cheio do plano (30un) */}
+              {activePlan.planName === 'Essencial' 
+                ? Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(activePlan.finalPrice)
+                : Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(getStaticPrice('Essencial'))}
+            </div>
+            <p className={`text-xs mb-6 font-medium uppercase ${activePlan.planName === 'Essencial' ? 'text-slate-500' : 'text-slate-400'}`}>{cycle}</p>
+            <BenefitsList isDark={activePlan.planName === 'Essencial'} />
+            {activePlan.planName === 'Essencial' && <button onClick={handleSubscribe} className="btn-subscribe text-slate-900 bg-white hover:bg-emerald-50">Contratar Essencial</button>}
+          </div>
+
+          {/* CARD 2: BUSINESS */}
+          <div className={getCardClasses('Business')}>
+            {/* Tag Popular corrigida: removido o absolute top-0 right-0 e a borda arredondada inferior esquerda, adicionado posicionamento relativo ao card */}
+            <div className="bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-tr-lg rounded-bl-lg absolute top-0 right-0">POPULAR</div>
+            <h3 className="text-xl font-bold mb-2 mt-4">Business</h3>
+            <p className={`text-sm mb-4 ${activePlan.planName === 'Business' ? 'text-slate-400' : 'text-slate-500'}`}>O melhor custo-benefício</p>
+            <div className="text-4xl font-extrabold mb-1">
+               {/* Lógica: Se ativo, valor calculado. Se inativo, valor cheio do plano (80un) */}
+               {activePlan.planName === 'Business' 
+                ? Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(activePlan.finalPrice)
+                : Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(getStaticPrice('Business'))}
+            </div>
+            <p className={`text-xs mb-6 font-medium uppercase ${activePlan.planName === 'Business' ? 'text-slate-500' : 'text-slate-400'}`}>{cycle}</p>
+            <BenefitsList isDark={activePlan.planName === 'Business'} />
+            {activePlan.planName === 'Business' && <button onClick={handleSubscribe} className="btn-subscribe text-slate-900 bg-white hover:bg-emerald-50">Contratar Business</button>}
+          </div>
+
+          {/* CARD 3: CUSTOM */}
+          <div className={getCardClasses('Custom')}>
+             <h3 className="text-xl font-bold mb-2 flex items-center gap-2"><Crown size={20} className="text-amber-400"/> Custom</h3>
+            <p className={`text-sm mb-4 ${activePlan.planName === 'Custom' ? 'text-slate-400' : 'text-slate-500'}`}>Para grandes empreendimentos</p>
+            <div className="text-4xl font-extrabold mb-1">
+               {/* Custom só mostra valor se estiver ativo (calculado). Senão, mostra "Sob Consulta" ou base */}
+               {activePlan.planName === 'Custom' 
+                ? Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(activePlan.finalPrice)
+                : 'R$ ---'}
+            </div>
+            <p className={`text-xs mb-6 font-medium uppercase ${activePlan.planName === 'Custom' ? 'text-slate-500' : 'text-slate-400'}`}>{cycle}</p>
             
-            {/* Plan 1: Avulso */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 hover:shadow-xl transition-all duration-300 relative group">
-              <h3 className="text-xl font-bold text-slate-900 mb-2">Plano Avulso</h3>
-              <p className="text-slate-500 text-sm mb-6 h-10">Ideal para eleições anuais ou demandas pontuais.</p>
-              
-              <div className="flex items-baseline mb-6">
-                <span className="text-4xl font-extrabold text-slate-900">R$ 220</span>
-                <span className="text-slate-500 ml-2">/assembleia</span>
+            {activePlan.planName === 'Custom' && (
+              <div className="bg-slate-800 p-3 rounded-lg text-xs text-slate-300 mb-6 border border-slate-700">
+                <p>Base Business (80 un): R$ 490,00</p>
+                <p className="text-emerald-400">+ R$ 2,50 por unidade extra</p>
               </div>
+            )}
 
-              <Link 
-                to="/login" 
-                state={{ isRegister: true }}
-                className="block w-full py-3 px-4 bg-white border-2 border-slate-200 text-slate-700 font-bold rounded-xl text-center hover:border-emerald-500 hover:text-emerald-600 transition-colors"
-              >
-                Contratar Avulso
-              </Link>
-
-              <div className="mt-8 space-y-4">
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">O que está incluso:</p>
-                <ul className="space-y-3 text-sm">
-                  <li className="flex items-start"><Check className="w-5 h-5 text-emerald-500 mr-2 flex-shrink-0" /> Ata digital automática</li>
-                  <li className="flex items-start"><Check className="w-5 h-5 text-emerald-500 mr-2 flex-shrink-0" /> Painel de votação seguro</li>
-                  <li className="flex items-start"><Check className="w-5 h-5 text-emerald-500 mr-2 flex-shrink-0" /> Suporte via e-mail (Básico)</li>
-                  <li className="flex items-start"><Check className="w-5 h-5 text-emerald-500 mr-2 flex-shrink-0" /> Usuários ilimitados</li>
-                </ul>
-              </div>
-            </div>
-
-            {/* Plan 2: Mensal (Featured) */}
-            <div className="bg-slate-900 rounded-2xl shadow-2xl border border-emerald-500 p-8 transform md:-translate-y-4 relative overflow-hidden">
-              <div className="absolute top-0 right-0 bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-bl-xl">MAIS POPULAR</div>
-              
-              <h3 className="text-xl font-bold text-white mb-2">Plano Mensal</h3>
-              <p className="text-emerald-100/70 text-sm mb-6 h-10">Para condomínios ativos, clubes e empresas.</p>
-              
-              <div className="flex items-baseline mb-6">
-                <span className="text-5xl font-extrabold text-white">R$ 290</span>
-                <span className="text-slate-400 ml-2">/mês</span>
-              </div>
-
-              <Link 
-                to="/login" 
-                state={{ isRegister: true }}
-                className="block w-full py-4 px-4 bg-emerald-600 text-white font-bold rounded-xl text-center hover:bg-emerald-500 transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:scale-105"
-              >
-                Assinar Mensal
-              </Link>
-
-              <div className="mt-8 space-y-4">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tudo do Avulso, mais:</p>
-                <ul className="space-y-3 text-sm text-slate-200">
-                  <li className="flex items-start"><Zap className="w-5 h-5 text-emerald-400 mr-2 flex-shrink-0" /> <span className="font-bold">Assembleias Ilimitadas</span></li>
-                  <li className="flex items-start"><Check className="w-5 h-5 text-emerald-500 mr-2 flex-shrink-0" /> Recursos Premium liberados</li>
-                  <li className="flex items-start"><Headphones className="w-5 h-5 text-emerald-400 mr-2 flex-shrink-0" /> Suporte Prioritário (WhatsApp)</li>
-                  <li className="flex items-start"><Check className="w-5 h-5 text-emerald-500 mr-2 flex-shrink-0" /> Gestão de documentos</li>
-                  <li className="flex items-start"><Check className="w-5 h-5 text-emerald-500 mr-2 flex-shrink-0" /> Histórico vitalício</li>
-                </ul>
-              </div>
-            </div>
-
-            {/* Plan 3: Anual */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 hover:shadow-xl transition-all duration-300 relative">
-               <div className="absolute top-0 inset-x-0 bg-emerald-50 h-1.5 rounded-t-2xl"></div>
-              <h3 className="text-xl font-bold text-emerald-700 mb-2">Plano Anual</h3>
-              <p className="text-slate-500 text-sm mb-6 h-10">Economia inteligente com foco em fidelização.</p>
-              
-              <div className="flex items-baseline mb-2">
-                <span className="text-4xl font-extrabold text-slate-900">R$ 2.436</span>
-                <span className="text-slate-500 ml-2">/ano</span>
-              </div>
-              <p className="text-emerald-600 text-xs font-bold mb-6 bg-emerald-50 inline-block px-2 py-1 rounded">30% de Desconto (Eq. R$ 203/mês)</p>
-
-              <Link 
-                to="/login" 
-                state={{ isRegister: true }}
-                className="block w-full py-3 px-4 bg-slate-800 text-white font-bold rounded-xl text-center hover:bg-slate-700 transition-colors"
-              >
-                Assinar Anual
-              </Link>
-
-              <div className="mt-8 bg-emerald-50 p-6 rounded-xl border border-emerald-100">
-                <p className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4">Vantagens exclusivas:</p>
-                <ul className="space-y-3 text-sm">
-                  <li className="flex items-start"><Crown className="w-5 h-5 text-amber-500 mr-2 flex-shrink-0" /> <span className="font-bold text-slate-900">Módulo Governança Digital</span></li>
-                  <li className="flex items-start"><Check className="w-5 h-5 text-emerald-600 mr-2 flex-shrink-0" /> Gestão de Reservas de Áreas</li>
-                  <li className="flex items-start"><Check className="w-5 h-5 text-emerald-600 mr-2 flex-shrink-0" /> Enquetes e Mural Oficial</li>
-                  <li className="flex items-start"><ShieldCheck className="w-5 h-5 text-emerald-600 mr-2 flex-shrink-0" /> Suporte VIP (WhatsApp)</li>
-                  <li className="flex items-start"><Check className="w-5 h-5 text-emerald-600 mr-2 flex-shrink-0" /> Treinamento de Implantação</li>
-                </ul>
-              </div>
-            </div>
-
+            <BenefitsList isDark={activePlan.planName === 'Custom'} />
+            {activePlan.planName === 'Custom' && <button onClick={handleSubscribe} className="btn-subscribe text-slate-900 bg-white hover:bg-emerald-50">Contratar Custom</button>}
           </div>
-          
-          <div className="text-center mt-12">
-            <Link to="/pricing" className="text-emerald-400 hover:text-emerald-300 font-medium flex items-center justify-center mx-auto">
-              Ver tabela completa de preços <ChevronRight className="h-4 w-4 ml-1" />
-            </Link>
-          </div>
+
         </div>
+
+        {cycle === 'ANUAL' && (
+          <div className="text-center mt-12 bg-emerald-100 max-w-lg mx-auto p-4 rounded-xl border border-emerald-200 text-emerald-800 font-medium shadow-sm">
+             🎉 Você está economizando 20% escolhendo o plano anual!
+             <br/>
+             <span className="text-sm opacity-80">O valor equivalente mensal seria {Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(activePlan.monthlyEquivalent)}/mês.</span>
+          </div>
+        )}
       </section>
 
-      {/* Feature Comparison */}
-      <section className="py-16 bg-white">
-        <div className="max-w-4xl mx-auto px-4">
-          <h2 className="text-2xl font-bold text-slate-900 text-center mb-12">Comparativo de Recursos</h2>
-          
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200">
-                  <th className="py-4 px-2 text-slate-500 font-medium">Recursos</th>
-                  <th className="py-4 px-2 text-center text-slate-900 font-bold w-1/4">Avulso</th>
-                  <th className="py-4 px-2 text-center text-emerald-600 font-bold w-1/4 bg-emerald-50 rounded-t-lg">Mensal</th>
-                  <th className="py-4 px-2 text-center text-emerald-700 font-bold w-1/4">Anual</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {[
-                  { name: "Ata Automática", avulso: true, mensal: true, anual: true },
-                  { name: "Criptografia de Ponta", avulso: true, mensal: true, anual: true },
-                  { name: "Assembleias", avulso: "1 Única", mensal: "Ilimitadas", anual: "Ilimitadas" },
-                  { name: "Suporte", avulso: "E-mail", mensal: "WhatsApp + E-mail", anual: "Gerente de Conta" },
-                  { name: "Upload de Documentos", avulso: "50MB", mensal: "10GB", anual: "100GB" },
-                  { name: "Módulo Governança (Reservas/Enquetes)", avulso: false, mensal: false, anual: true },
-                  { name: "Integração API", avulso: false, mensal: true, anual: true },
-                  { name: "Treinamento", avulso: false, mensal: false, anual: true },
-                ].map((row, i) => (
-                  <tr key={i} className="hover:bg-slate-50">
-                    <td className="py-4 px-2 text-slate-700 font-medium">{row.name}</td>
-                    <td className="py-4 px-2 text-center text-slate-600">
-                      {typeof row.avulso === 'boolean' ? (row.avulso ? <Check className="w-5 h-5 text-emerald-500 mx-auto" /> : <X className="w-5 h-5 text-slate-300 mx-auto" />) : row.avulso}
-                    </td>
-                    <td className="py-4 px-2 text-center text-slate-600 bg-emerald-50/50">
-                      {typeof row.mensal === 'boolean' ? (row.mensal ? <Check className="w-5 h-5 text-emerald-500 mx-auto" /> : <X className="w-5 h-5 text-slate-300 mx-auto" />) : row.mensal}
-                    </td>
-                    <td className="py-4 px-2 text-center text-slate-600">
-                      {typeof row.anual === 'boolean' ? (row.anual ? <Check className="w-5 h-5 text-emerald-500 mx-auto" /> : <X className="w-5 h-5 text-slate-300 mx-auto" />) : row.anual}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section className="py-16 bg-slate-50">
-        <div className="max-w-3xl mx-auto px-4">
-          <div className="flex items-center justify-center gap-2 mb-8">
-            <HelpCircle className="w-6 h-6 text-emerald-600" />
-            <h2 className="text-2xl font-bold text-slate-900">Perguntas Frequentes</h2>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 md:p-8 space-y-2">
-            <FaqItem 
-              question="Como funciona o pagamento?" 
-              answer="Aceitamos cartões de crédito (todas as bandeiras), boleto bancário e PIX. Para o plano mensal, a cobrança é recorrente no cartão de crédito." 
-            />
-            <FaqItem 
-              question="Posso cancelar a qualquer momento?" 
-              answer="Sim. No plano mensal, você pode cancelar a qualquer momento sem multa. O acesso permanece ativo até o fim do ciclo pago. No plano anual, o cancelamento encerra a renovação automática." 
-            />
-            <FaqItem 
-              question="O que conta como uma assembleia ilimitada?" 
-              answer="Nos planos Mensal e Anual, você pode abrir quantas votações e assembleias (AGO, AGE) quiser, sem custo adicional por evento." 
-            />
-            <FaqItem 
-              question="Tenho garantia de segurança?" 
-              answer="Sim. Utilizamos criptografia SHA-256 e logs auditáveis para garantir que cada voto seja único, secreto (quando aplicável) e imutável." 
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="bg-slate-900 text-slate-400 py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-           <div className="grid md:grid-cols-4 gap-8 mb-8">
-              <div>
-                 <div className="mb-4">
-                    <Link to="/">
-                        <Logo theme="light" />
-                    </Link>
-                 </div>
-                 <p className="text-sm">Tecnologia para decisões democráticas e transparentes.</p>
-              </div>
-              
-              <div>
-                 <h4 className="text-white font-bold mb-4">Empresa</h4>
-                 <ul className="space-y-2 text-sm">
-                    <li><Link to="/pricing" className="hover:text-white">Preços</Link></li>
-                    <li><Link to="/blog" className="hover:text-white">Blog</Link></li>
-                    <li><Link to="/faq" className="hover:text-white">FAQ</Link></li>
-                    <li><Link to="/testimonials" className="hover:text-white">Depoimentos</Link></li>
-                 </ul>
-              </div>
-
-              <div>
-                 <h4 className="text-white font-bold mb-4">Legal</h4>
-                 <ul className="space-y-2 text-sm">
-                    <li><Link to="/terms" className="hover:text-white">Termos de Uso</Link></li>
-                    <li><Link to="/privacy" className="hover:text-white">Privacidade</Link></li>
-                    <li><Link to="/compliance" className="hover:text-white">Compliance</Link></li>
-                 </ul>
-              </div>
-
-              <div>
-                 <h4 className="text-white font-bold mb-4">Contato</h4>
-                 <ul className="space-y-2 text-sm">
-                    <li>suporte@votzz.com.br</li>
-                 </ul>
-              </div>
-           </div>
-           <div className="border-t border-slate-800 pt-8 text-center text-xs">
-              &copy; {new Date().getFullYear()} Votzz. Todos os direitos reservados.
-           </div>
-        </div>
-      </footer>
+      <style>{`
+        .pricing-card {
+          border-radius: 1.5rem;
+          padding: 2rem;
+          transition: all 0.3s ease;
+          display: flex;
+          flex-direction: column;
+          min-height: 750px; /* Aumentado para caber o novo item */
+        }
+        .btn-subscribe {
+          width: 100%;
+          padding: 1rem;
+          border-radius: 0.75rem;
+          font-weight: bold;
+          text-align: center;
+          transition: all 0.2s;
+          margin-top: auto; 
+        }
+      `}</style>
     </div>
   );
-};
+}
 
 export default Pricing;

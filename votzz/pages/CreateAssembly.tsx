@@ -25,8 +25,13 @@ const CreateAssembly: React.FC = () => {
     if (!formData.title) return alert("Digite um título para o tema primeiro.");
     
     setLoadingAi(true);
-    const desc = await generateAssemblyDescription(formData.title, "Foco em transparência e regras do código civil.");
-    setFormData(prev => ({ ...prev, description: desc }));
+    // Simulação caso o geminiService falhe
+    try {
+        const desc = await generateAssemblyDescription(formData.title, "Foco em transparência e regras do código civil.");
+        setFormData(prev => ({ ...prev, description: desc }));
+    } catch (e) {
+        setFormData(prev => ({ ...prev, description: "Sugestão automática indisponível. Por favor, descreva a pauta manualmente." }));
+    }
     setLoadingAi(false);
   };
 
@@ -53,6 +58,7 @@ const CreateAssembly: React.FC = () => {
 
         navigate('/assemblies');
     } catch (err) {
+        console.error(err);
         alert("Erro ao criar assembleia no banco real.");
     } finally {
         setSaving(false);
@@ -91,16 +97,16 @@ const CreateAssembly: React.FC = () => {
 
             <div className="col-span-2">
               <div className="flex justify-between items-center mb-1">
-                 <label className="block text-sm font-medium text-slate-700">Descrição da Pauta (Edital)</label>
-                 <button 
-                   type="button"
-                   onClick={handleAiGenerate}
-                   disabled={loadingAi || !formData.title}
-                   className="text-xs flex items-center bg-purple-100 text-purple-700 px-2 py-1 rounded hover:bg-purple-200 transition-colors disabled:opacity-50"
-                 >
-                   {loadingAi ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
-                   {loadingAi ? 'Gerando...' : 'Gerar com IA'}
-                 </button>
+                  <label className="block text-sm font-medium text-slate-700">Descrição da Pauta (Edital)</label>
+                  <button 
+                    type="button"
+                    onClick={handleAiGenerate}
+                    disabled={loadingAi || !formData.title}
+                    className="text-xs flex items-center bg-purple-100 text-purple-700 px-2 py-1 rounded hover:bg-purple-200 transition-colors disabled:opacity-50"
+                  >
+                    {loadingAi ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Sparkles className="h-3 w-3 mr-1" />}
+                    {loadingAi ? 'Gerando...' : 'Gerar com IA'}
+                  </button>
               </div>
               <textarea 
                 rows={6}
@@ -112,6 +118,7 @@ const CreateAssembly: React.FC = () => {
               />
             </div>
 
+            {/* Resto dos inputs (Tipos, Datas, etc) mantidos iguais ao seu código original */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de Assembleia</label>
               <select 

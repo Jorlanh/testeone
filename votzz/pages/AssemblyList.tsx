@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Calendar, ChevronRight, Users, Plus, AlertCircle } from 'lucide-react';
-import { api } from '../services/api'; // Alterado de Mock para API Real
+import api from '../services/api';
 import { Assembly, User } from '../types';
+import { useAuth } from '../context/AuthContext'; // Importe o contexto para pegar o user real
 
-const AssemblyList: React.FC<{ user: User | null }> = ({ user }) => {
+const AssemblyList: React.FC<{ user: User | null }> = () => { // Removi a prop user pois pegamos do contexto
+  const { user } = useAuth(); // Pegar user do contexto
   const [assemblies, setAssemblies] = useState<Assembly[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -16,8 +18,8 @@ const AssemblyList: React.FC<{ user: User | null }> = ({ user }) => {
   const loadAssemblies = async () => {
     try {
       setLoading(true);
-      const data = await api.get('/assemblies');
-      setAssemblies(data);
+      const res = await api.get('/assemblies');
+      setAssemblies(res.data || []); // Garante que pega .data
       setError(null);
     } catch (err) {
       console.error("Erro ao carregar assembleias do banco:", err);
@@ -32,7 +34,8 @@ const AssemblyList: React.FC<{ user: User | null }> = ({ user }) => {
       case 'ABERTA': 
       case 'OPEN': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
       case 'AGENDADA': return 'bg-blue-100 text-blue-700 border-blue-200';
-      case 'ENCERRADA': return 'bg-slate-100 text-slate-700 border-slate-200';
+      case 'ENCERRADA': 
+      case 'CLOSED': return 'bg-slate-100 text-slate-700 border-slate-200';
       default: return 'bg-amber-100 text-amber-700 border-amber-200';
     }
   };
@@ -46,7 +49,7 @@ const AssemblyList: React.FC<{ user: User | null }> = ({ user }) => {
           <h1 className="text-2xl font-bold text-slate-800">Assembleias e Votações</h1>
           <p className="text-slate-500">Participe das decisões reais do seu condomínio</p>
         </div>
-        {user?.role === 'MANAGER' && (
+        {(user?.role === 'MANAGER' || user?.role === 'SINDICO' || user?.role === 'ADM_CONDO') && (
           <Link 
             to="/create-assembly" 
             className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
@@ -75,13 +78,13 @@ const AssemblyList: React.FC<{ user: User | null }> = ({ user }) => {
                   </span>
                   <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Decisão Coletiva</span>
                 </div>
-                <h3 className="text-lg font-bold text-slate-800 mb-1">{assembly.titulo}</h3>
-                <p className="text-slate-600 text-sm line-clamp-2 mb-4">{assembly.descricao}</p>
+                <h3 className="text-lg font-bold text-slate-800 mb-1">{assembly.title || assembly.titulo}</h3>
+                <p className="text-slate-600 text-sm line-clamp-2 mb-4">{assembly.description}</p>
                 
                 <div className="flex items-center space-x-6 text-sm text-slate-500">
                   <div className="flex items-center space-x-1.5">
                     <Calendar className="h-4 w-4" />
-                    <span>Início: {new Date(assembly.dataInicio).toLocaleDateString()}</span>
+                    <span>Início: {new Date(assembly.startDate || assembly.dataInicio).toLocaleDateString()}</span>
                   </div>
                   <div className="flex items-center space-x-1.5">
                     <Users className="h-4 w-4" />
@@ -95,7 +98,7 @@ const AssemblyList: React.FC<{ user: User | null }> = ({ user }) => {
                   to={`/assembly/${assembly.id}`}
                   className="inline-flex items-center justify-center px-4 py-2 border border-slate-300 shadow-sm text-sm font-medium rounded-lg text-slate-700 bg-white hover:bg-slate-50 w-full md:w-auto"
                 >
-                  {user?.role === 'MANAGER' ? 'Gerenciar' : 'Entrar na Sala'}
+                  {(user?.role === 'MANAGER' || user?.role === 'SINDICO') ? 'Gerenciar' : 'Entrar na Sala'}
                   <ChevronRight className="ml-2 h-4 w-4" />
                 </Link>
               </div>
@@ -103,7 +106,7 @@ const AssemblyList: React.FC<{ user: User | null }> = ({ user }) => {
           </div>
         ))}
 
-        {assemblies.length === 0 && !loading && (
+        {assemblies.length === 0 && !loading && !error && (
           <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300">
             <p className="text-slate-500">Nenhuma assembleia encontrada no banco de dados.</p>
           </div>

@@ -1,26 +1,37 @@
-// src/pages/Auth.tsx
 import React, { useState, useEffect } from 'react';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
-import { Lock, Mail, Home, User as UserIcon, ShieldCheck } from 'lucide-react';
+import { Lock, Mail, ShieldCheck, ArrowRight, AlertCircle, User as UserIcon, TrendingUp, Building, Phone, CheckCircle, Fingerprint } from 'lucide-react';
 import { Logo } from '../components/Logo';
-import api from '../services/api';
+import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { LoginRequest } from '../types';
 
 const Auth: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { login } = useAuth();
   
+  const isAffiliateContext = location.pathname.includes('/affiliate');
+
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const [email, setEmail] = useState('root@votzz.com');
+  // Estados do Formulário
+  // [MODIFICAÇÃO]: loginInput usado para a tela de Login (E-mail ou CPF)
+  const [loginInput, setLoginInput] = useState(''); 
+  
+  // Campos Específicos de Cadastro
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [nome, setNome] = useState('');
   const [cpf, setCpf] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
+  const [condoIdentifier, setCondoIdentifier] = useState('');
+  const [bloco, setBloco] = useState('');
   const [unidade, setUnidade] = useState('');
   const [secretKeyword, setSecretKeyword] = useState('');
-  const [tenantId, setTenantId] = useState('d290f1ee-6c54-4b01-90e6-d701748f0851'); // ID do Solar Votzz do seu DML
 
   useEffect(() => {
     if (location.state?.isRegister) {
@@ -28,78 +39,230 @@ const Auth: React.FC = () => {
     }
   }, [location.state]);
 
+  const handleToggleMode = () => {
+    setError('');
+    if (isLogin) {
+      if (isAffiliateContext) {
+        navigate('/affiliate/register');
+      } else {
+        setIsLogin(false);
+      }
+    } else {
+      setIsLogin(true);
+    }
+  };
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
 
     try {
       if (isLogin) {
-        const response = await api.post('/auth/login', { email, password });
-        login(response.data);
+        // --- LÓGICA DE LOGIN HÍBRIDO ---
         
-        const role = response.data.role;
-        if (role === 'ADMIN') navigate('/admin/dashboard');
-        else if (role === 'AFILIADO') navigate('/affiliate/dashboard');
-        else navigate('/dashboard');
+        // Limpa formatação básica se for CPF (opcional, o backend também pode tratar)
+        // const cleanLogin = loginInput.replace(/[^\w\s@.]/gi, ''); 
+        
+        const payload: LoginRequest = { 
+            login: loginInput, // Envia o valor digitado no campo "E-mail ou CPF"
+            password 
+        };
+
+        const response = await api.post('/auth/login', payload);
+        const userData = response.data;
+        login(userData);
+        
+        switch (userData.role) {
+          case 'ADMIN': navigate('/admin/dashboard'); break;
+          case 'AFILIADO': navigate('/affiliate/dashboard'); break;
+          default: navigate('/dashboard');
+        }
+
       } else {
-        await api.post('/users/register-resident', {
-          nome, email, password, cpf, unidade, tenantId, secretKeyword
+        // --- CADASTRO DE MORADOR ---
+        
+        if (password !== confirmPassword) {
+          setError('As senhas não coincidem.');
+          setLoading(false);
+          return;
+        }
+
+        await api.post('/auth/register-resident', { 
+          nome, 
+          email, 
+          password, 
+          cpf, 
+          whatsapp,
+          unidade, 
+          bloco,
+          condoIdentifier,
+          secretKeyword
         });
-        alert('Cadastro realizado com sucesso! Faça login.');
+        
+        alert('Cadastro realizado com sucesso! Faça login para entrar.');
         setIsLogin(true);
+        // Limpa campos sensíveis
+        setPassword('');
+        setConfirmPassword('');
       }
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Erro na operação.');
+      console.error(err);
+      const msg = err.response?.data || err.message || 'Erro na operação. Verifique os dados.';
+      setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-        <div className="bg-slate-900 p-12 flex flex-col items-center border-b-4 border-emerald-500">
-          <Link to="/"><Logo theme="light" size="lg" showSlogan={true} /></Link>
+    <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4 relative overflow-hidden">
+      
+      {isAffiliateContext && (
+        <div className="absolute top-0 right-0 p-10 opacity-5 pointer-events-none">
+           <TrendingUp className="w-96 h-96 text-emerald-500" />
         </div>
-        <div className="p-8">
-          <form onSubmit={handleAuth} className="space-y-5">
-            <h2 className="text-xl font-semibold text-slate-800 text-center">
-              {isLogin ? 'Acessar Conta' : 'Novo Cadastro'}
-            </h2>
+      )}
 
+      <div className={`bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border ${isAffiliateContext ? 'border-emerald-500/30' : 'border-slate-700'} relative z-10`}>
+        
+        <div className="bg-slate-900 p-8 flex flex-col items-center border-b border-slate-700">
+          <Link to="/"><Logo theme="dark" size="lg" /></Link>
+          <div className="mt-4 text-center">
+            {isAffiliateContext ? (
+              <span className="inline-block bg-emerald-500/10 text-emerald-400 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wide mb-2">Área do Parceiro</span>
+            ) : (
+              !isLogin && <span className="text-slate-500 text-sm block mb-1">Cadastro de Morador</span>
+            )}
+            <p className="text-slate-400 text-sm">
+              {isLogin ? 'Bem-vindo de volta! Acesse sua conta.' : 'Preencha os dados para solicitar acesso.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="p-8">
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/50 text-red-200 p-3 rounded-lg flex items-center gap-2 mb-6 text-sm animate-pulse">
+              <AlertCircle size={16} />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleAuth} className="space-y-5">
+            
+            {/* --- CAMPOS DE CADASTRO (APENAS QUANDO !isLogin) --- */}
             {!isLogin && (
-              <input type="text" placeholder="Nome Completo" value={nome} onChange={e => setNome(e.target.value)} className="w-full p-3 border rounded-lg" required />
+              <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
+                
+                <div className="relative">
+                  <Building className="absolute left-3 top-3 h-5 w-5 text-emerald-500" />
+                  <input 
+                    type="text" 
+                    placeholder="Nome do Condomínio ou CNPJ" 
+                    value={condoIdentifier} 
+                    onChange={e => setCondoIdentifier(e.target.value)} 
+                    className="w-full bg-slate-900 text-white pl-10 p-3 border border-emerald-500/30 rounded-lg focus:border-emerald-500 outline-none transition-all placeholder:text-slate-500" 
+                    required 
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1 ml-1">Digite exatamente como consta no registro</p>
+                </div>
+
+                <div className="relative">
+                  <UserIcon className="absolute left-3 top-3 h-5 w-5 text-slate-500" />
+                  <input type="text" placeholder="Nome Completo" value={nome} onChange={e => setNome(e.target.value)} className="w-full bg-slate-900 text-white pl-10 p-3 border border-slate-700 rounded-lg focus:border-emerald-500 outline-none" required />
+                </div>
+
+                {/* E-mail específico para cadastro */}
+                <div className="relative">
+                    <Mail className="absolute left-3 top-3 h-5 w-5 text-slate-500" />
+                    <input type="email" value={email} placeholder="Seu melhor E-mail" onChange={e => setEmail(e.target.value)} className="w-full bg-slate-900 text-white pl-10 p-3 border border-slate-700 rounded-lg focus:border-emerald-500 outline-none" required />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <input type="text" placeholder="CPF" value={cpf} onChange={e => setCpf(e.target.value)} className="bg-slate-900 text-white p-3 border border-slate-700 rounded-lg focus:border-emerald-500 outline-none" required />
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-3 h-5 w-5 text-slate-500" />
+                    <input type="text" placeholder="WhatsApp" value={whatsapp} onChange={e => setWhatsapp(e.target.value)} className="w-full bg-slate-900 text-white pl-10 p-3 border border-slate-700 rounded-lg focus:border-emerald-500 outline-none" required />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <input type="text" placeholder="Bloco / Torre" value={bloco} onChange={e => setBloco(e.target.value)} className="bg-slate-900 text-white p-3 border border-slate-700 rounded-lg focus:border-emerald-500 outline-none" required />
+                  <input type="text" placeholder="Unidade (Ex: 101)" value={unidade} onChange={e => setUnidade(e.target.value)} className="bg-slate-900 text-white p-3 border border-slate-700 rounded-lg focus:border-emerald-500 outline-none" required />
+                </div>
+              </div>
             )}
 
+            {/* --- CAMPO DE LOGIN (APENAS QUANDO isLogin) --- */}
+            {isLogin && (
+                <div className="relative animate-in fade-in duration-300">
+                    <UserIcon className="absolute left-3 top-3 h-5 w-5 text-slate-500" />
+                    <input 
+                        type="text" // Type text para aceitar CPF ou Email
+                        value={loginInput} 
+                        placeholder="E-mail ou CPF" 
+                        onChange={e => setLoginInput(e.target.value)} 
+                        className="w-full bg-slate-900 text-white pl-10 p-3 border border-slate-700 rounded-lg focus:border-emerald-500 outline-none transition-all" 
+                        required 
+                    />
+                </div>
+            )}
+
+            {/* --- CAMPO DE SENHA (COMUM) --- */}
             <div className="relative">
-              <Mail className="absolute left-3 top-3 h-5 w-5 text-slate-400" />
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full pl-10 p-3 border rounded-lg" required />
+              <Lock className="absolute left-3 top-3 h-5 w-5 text-slate-500" />
+              <input type="password" placeholder="Sua Senha" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-slate-900 text-white pl-10 p-3 border border-slate-700 rounded-lg focus:border-emerald-500 outline-none transition-all" required />
             </div>
 
-            <div className="relative">
-              <Lock className="absolute left-3 top-3 h-5 w-5 text-slate-400" />
-              <input type="password" placeholder="Sua Senha" value={password} onChange={e => setPassword(e.target.value)} className="w-full pl-10 p-3 border rounded-lg" required />
-            </div>
+            {/* [NOVO] LINK DE ESQUECI A SENHA */}
+            {isLogin && (
+                <div className="flex justify-end -mt-3">
+                    <Link to="/forgot-password" className="text-xs text-emerald-500 hover:text-emerald-400 hover:underline transition-colors">
+                        Esqueci minha senha
+                    </Link>
+                </div>
+            )}
 
+            {/* --- CONFIRMAÇÃO DE SENHA (SÓ NO CADASTRO) --- */}
             {!isLogin && (
               <>
-                <div className="grid grid-cols-2 gap-4">
-                  <input type="text" placeholder="CPF" value={cpf} onChange={e => setCpf(e.target.value)} className="p-3 border rounded-lg" required />
-                  <input type="text" placeholder="Unidade" value={unidade} onChange={e => setUnidade(e.target.value)} className="p-3 border rounded-lg" required />
+                <div className="relative animate-in slide-in-from-top-1">
+                    <CheckCircle className="absolute left-3 top-3 h-5 w-5 text-slate-500" />
+                    <input 
+                    type="password" 
+                    placeholder="Confirmar Senha" 
+                    value={confirmPassword} 
+                    onChange={e => setConfirmPassword(e.target.value)} 
+                    className={`w-full bg-slate-900 text-white pl-10 p-3 border rounded-lg outline-none transition-all ${password && confirmPassword && password !== confirmPassword ? 'border-red-500 focus:border-red-500' : 'border-slate-700 focus:border-emerald-500'}`}
+                    required 
+                    />
+                    {password && confirmPassword && password !== confirmPassword && (
+                    <span className="text-xs text-red-400 absolute right-3 top-4 font-bold">Não coincidem</span>
+                    )}
                 </div>
-                <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-100">
-                   <label className="text-[10px] font-bold text-emerald-700 uppercase flex items-center gap-1"><ShieldCheck size={12}/> Palavra-Chave do Condomínio</label>
-                   <input type="password" value={secretKeyword} onChange={e => setSecretKeyword(e.target.value)} className="w-full mt-1 p-2 border-emerald-200 rounded" required />
+
+                <div className="bg-emerald-900/20 p-4 rounded-lg border border-emerald-500/30 mt-4">
+                    <label className="text-xs font-bold text-emerald-400 uppercase flex items-center gap-1 mb-2">
+                      <ShieldCheck size={14}/> Palavra-Chave do Condomínio
+                    </label>
+                    <input type="password" value={secretKeyword} onChange={e => setSecretKeyword(e.target.value)} className="w-full p-2 bg-slate-900 border border-emerald-500/50 rounded text-white focus:ring-2 focus:ring-emerald-500/50 outline-none" placeholder="Solicite ao síndico" required />
                 </div>
               </>
             )}
 
-            <button type="submit" disabled={loading} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg transition-all shadow-md">
-              {loading ? 'Aguarde...' : (isLogin ? 'Entrar' : 'Cadastrar')}
+            <button 
+              type="submit" 
+              disabled={loading} 
+              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg transition-all shadow-lg hover:shadow-emerald-500/20 flex items-center justify-center gap-2 mt-6"
+            >
+              {loading ? 'Processando...' : (isLogin ? <>Entrar <ArrowRight size={18}/></> : 'Finalizar Cadastro')}
             </button>
 
-            <button type="button" onClick={() => setIsLogin(!isLogin)} className="w-full text-sm text-emerald-600 hover:underline">
-              {isLogin ? 'Não tem conta? Cadastre-se' : 'Já tenho conta. Entrar'}
+            <button type="button" onClick={handleToggleMode} className="w-full text-sm text-slate-400 hover:text-white hover:underline transition-colors mt-4">
+              {isLogin 
+                ? (isAffiliateContext ? 'Ainda não é parceiro? Cadastre-se' : 'Novo morador? Cadastre-se aqui')
+                : 'Já possui conta? Fazer Login'
+              }
             </button>
           </form>
         </div>

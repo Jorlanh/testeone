@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
@@ -22,7 +21,8 @@ import {
   Zap, 
   Check, 
   Headphones, 
-  Crown
+  Crown,
+  Video // Novo ícone para Vídeo
 } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { User } from '../types';
@@ -68,12 +68,17 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
           {/* Desktop Nav */}
           <nav className="hidden md:flex items-center space-x-6 lg:space-x-8">
             <button onClick={() => scrollToSection('features')} className="text-sm font-medium hover:text-emerald-600 transition-colors">Funcionalidades</button>
-            <Link to="/governance-solutions" className="text-sm font-medium hover:text-emerald-600 transition-colors">Governança Digital</Link>
+            
+            {/* [ATUALIZADO] Link correto para Governança */}
+            <Link to="/governance" className="text-sm font-medium hover:text-emerald-600 transition-colors">Governança Digital</Link>
+            
             <Link to="/pricing" className="text-sm font-medium hover:text-emerald-600 transition-colors">Preços</Link>
-            <button onClick={() => scrollToSection('affiliates')} className="text-sm font-bold text-slate-900 flex items-center gap-1 hover:text-emerald-600 transition-colors group">
+            
+            {/* [ATUALIZADO] Link direto para login de afiliados */}
+            <Link to="/affiliate/login" className="text-sm font-bold text-slate-900 flex items-center gap-1 hover:text-emerald-600 transition-colors group">
               <TrendingUp className="w-4 h-4 text-emerald-500 group-hover:scale-110 transition-transform" />
-              Afiliados
-            </button>
+              Área do Afiliado
+            </Link>
           </nav>
 
           <div className="hidden md:flex items-center space-x-4">
@@ -91,11 +96,10 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
                   Entrar
                 </Link>
                 <Link 
-                  to="/login" 
-                  state={{ isRegister: true }}
+                  to="/pricing" // Alterado para Pricing para forçar o fluxo de escolha
                   className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-full text-sm font-medium transition-all shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
                 >
-                  Criar Conta
+                  Começar Agora
                 </Link>
               </>
             )}
@@ -114,12 +118,12 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
         {mobileMenuOpen && (
           <div className="md:hidden absolute top-full left-0 right-0 bg-white border-t border-slate-100 shadow-lg p-4 flex flex-col space-y-4 animate-in slide-in-from-top-2">
             <button onClick={() => scrollToSection('features')} className="text-left py-2 font-medium border-b border-slate-50">Funcionalidades</button>
-            <Link to="/governance-solutions" className="text-left py-2 font-medium border-b border-slate-50">Governança Digital</Link>
+            <Link to="/governance" className="text-left py-2 font-medium border-b border-slate-50">Governança Digital</Link>
             <Link to="/pricing" className="text-left py-2 font-medium border-b border-slate-50">Preços</Link>
-            <button onClick={() => scrollToSection('affiliates')} className="text-left py-2 font-bold text-emerald-700 border-b border-slate-50 flex items-center gap-2">
+            <Link to="/affiliate/login" className="text-left py-2 font-bold text-emerald-700 border-b border-slate-50 flex items-center gap-2">
               <TrendingUp className="w-4 h-4" />
-              Seja um Afiliado
-            </button>
+              Sou Afiliado
+            </Link>
             {user ? (
                <Link to="/dashboard" className="bg-emerald-600 text-white py-3 rounded-lg text-center font-bold shadow-md flex items-center justify-center gap-2">
                  <LayoutDashboard className="w-4 h-4" />
@@ -129,8 +133,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
               <>
                 <Link to="/login" className="text-left py-2 font-medium text-emerald-600">Entrar</Link>
                 <Link 
-                  to="/login" 
-                  state={{ isRegister: true }} 
+                  to="/pricing" 
                   className="bg-emerald-600 text-white py-3 rounded-lg text-center font-medium shadow-md"
                 >
                   Criar Conta
@@ -153,10 +156,10 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
           <div className="flex flex-col lg:flex-row items-center gap-12">
             <div className="lg:w-1/2 space-y-8 animate-in slide-in-from-left duration-700">
               <h1 className="text-4xl lg:text-6xl font-extrabold text-slate-900 leading-tight">
-                Votações Online para <span className="text-emerald-600">Condomínios</span>, Clubes e Empresas
+                Votações Online e <span className="text-emerald-600">Assembleias ao Vivo</span>
               </h1>
               <p className="text-lg text-slate-600 max-w-lg leading-relaxed">
-                Assembleias, eleições internas e votações seguras e rápidas. Auditoria completa e usuários ilimitados para simplificar sua gestão.
+                A única plataforma com transmissão de vídeo integrada, votação segura e gestão completa para condomínios modernos.
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
                 {user ? (
@@ -169,50 +172,50 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
                   </Link>
                 ) : (
                   <Link 
-                    to="/login" 
-                    state={{ isRegister: true }}
+                    to="/pricing"
                     className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-4 rounded-full font-bold text-center shadow-lg hover:shadow-emerald-500/30 transition-all transform hover:-translate-y-1"
                   >
                     Começar Agora
                   </Link>
                 )}
-                <button className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-8 py-4 rounded-full font-bold transition-all">
-                  Solicitar Demonstração
+                <button className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-8 py-4 rounded-full font-bold transition-all flex items-center justify-center gap-2">
+                  <Video className="w-5 h-5 text-emerald-600" /> Ver Demonstração
                 </button>
               </div>
             </div>
             
+            {/* Hero Image / Mockup */}
             <div className="lg:w-1/2 relative animate-in slide-in-from-right duration-1000">
               <div className="bg-slate-900 rounded-3xl p-4 shadow-2xl transform rotate-2 hover:rotate-0 transition-transform duration-500">
                 <div className="bg-slate-800 rounded-2xl overflow-hidden border border-slate-700 aspect-[4/3] flex flex-col">
-                  {/* Mock Interface */}
-                  <div className="bg-slate-900 p-4 flex items-center space-x-2 border-b border-slate-700">
-                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                    <div className="w-3 h-3 rounded-full bg-amber-500"></div>
-                    <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
-                    <div className="bg-slate-800 px-4 py-1 rounded-full text-xs text-slate-400 mx-auto font-mono">votzz.com/assembleia-ao-vivo</div>
+                  {/* Interface Mock: Assembleia ao Vivo */}
+                  <div className="bg-slate-900 p-4 flex items-center justify-between border-b border-slate-700">
+                    <div className="flex space-x-2">
+                        <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                        <div className="w-3 h-3 rounded-full bg-amber-500"></div>
+                        <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
+                        <span className="text-xs text-red-400 font-bold uppercase tracking-wider">Ao Vivo</span>
+                    </div>
                   </div>
-                  <div className="p-6 space-y-4 flex-1 bg-slate-50 relative">
-                     <div className="absolute inset-0 bg-grid-slate-200/50 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))]"></div>
-                     <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 relative z-10">
-                        <div className="flex justify-between items-center mb-4">
-                          <h3 className="font-bold text-slate-800">Aprovação de Reforma</h3>
-                          <span className="bg-emerald-100 text-emerald-800 text-xs px-2 py-1 rounded-full font-bold">Em andamento</span>
-                        </div>
-                        <div className="space-y-2">
-                           <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                             <div className="h-full bg-emerald-500 w-[75%] shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
-                           </div>
-                           <div className="flex justify-between text-xs text-slate-500 font-medium">
-                             <span>Sim (75%)</span>
-                             <span>45 Votos</span>
-                           </div>
-                        </div>
-                     </div>
-                     <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 opacity-75 relative z-10">
-                        <div className="h-4 bg-slate-200 w-1/2 rounded mb-2"></div>
-                        <div className="h-3 bg-slate-100 w-3/4 rounded"></div>
-                     </div>
+                  <div className="p-6 space-y-4 flex-1 bg-slate-900 relative flex flex-col justify-center items-center text-center">
+                      <div className="w-16 h-16 rounded-full bg-slate-700 flex items-center justify-center mb-4">
+                          <Users className="text-slate-400 w-8 h-8"/>
+                      </div>
+                      <h3 className="text-white font-bold text-lg">Assembleia Geral Extraordinária</h3>
+                      <p className="text-slate-400 text-sm">Pauta 1: Aprovação das Contas 2024</p>
+                      
+                      <div className="w-full max-w-xs bg-slate-800 rounded-lg p-3 mt-4 border border-slate-700">
+                          <div className="flex justify-between text-xs text-slate-300 mb-1">
+                              <span>Votos Favoráveis</span>
+                              <span>72%</span>
+                          </div>
+                          <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                              <div className="h-full bg-emerald-500 w-[72%]"></div>
+                          </div>
+                      </div>
                   </div>
                 </div>
               </div>
@@ -221,56 +224,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
         </div>
       </section>
 
-      {/* 3. Problem / Solution */}
-      <section className="py-20 bg-slate-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <h2 className="text-3xl font-bold text-slate-900 mb-4">
-              Chega de assembleias cansativas e vazias
-            </h2>
-            <p className="text-slate-600 text-lg">
-              Votações presenciais são caras, demoradas e difíceis de organizar. 
-              Modernize sua gestão com uma solução auditável e prática.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              { 
-                icon: ShieldCheck, 
-                title: "Segurança Total", 
-                desc: "Criptografia de ponta a ponta e logs de auditoria imutáveis. Fim das fraudes e contestações.",
-                color: "text-blue-600",
-                bg: "bg-blue-100"
-              },
-              { 
-                icon: Smartphone, 
-                title: "Praticidade Mobile", 
-                desc: "Moradores votam pelo celular, de onde estiverem. Aumente o quórum em até 300%.",
-                color: "text-purple-600",
-                bg: "bg-purple-100"
-              },
-              { 
-                icon: DollarSign, 
-                title: "Economia Real", 
-                desc: "Reduza custos com aluguel de salão, horas extras e impressões de papel.",
-                color: "text-emerald-600",
-                bg: "bg-emerald-100"
-              }
-            ].map((item, idx) => (
-              <div key={idx} className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 hover:shadow-lg transition-shadow duration-300">
-                <div className={`${item.bg} w-14 h-14 rounded-xl flex items-center justify-center mb-6`}>
-                  <item.icon className={`h-7 w-7 ${item.color}`} />
-                </div>
-                <h3 className="text-xl font-bold text-slate-900 mb-3">{item.title}</h3>
-                <p className="text-slate-600 leading-relaxed">{item.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* 4. Features */}
+      {/* 3. Features (ATUALIZADO: Inclui Video e Benefícios Iguais) */}
       <section id="features" className="py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="mb-16">
@@ -280,16 +234,16 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
           
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
-              { icon: Clock, label: "Votação em Tempo Real", desc: "Acompanhe a apuração ao vivo." },
+              { icon: Video, label: "Assembleia Ao Vivo", desc: "Transmissão de vídeo integrada na plataforma." }, // Novo
+              { icon: Clock, label: "Votação em Tempo Real", desc: "Acompanhe a apuração instantânea." },
               { icon: FileText, label: "Ata Automática", desc: "Geração de documentos pós-votação." },
-              { icon: Lock, label: "Auditoria Criptografada", desc: "Registro à prova de falhas." },
-              { icon: Users, label: "Lista de Presença Digital", desc: "Controle automático de quórum." },
+              { icon: Lock, label: "Auditoria Criptografada", desc: "Registro imutável e seguro." },
+              { icon: Users, label: "Lista de Presença", desc: "Controle automático de quórum." },
               { icon: Mail, label: "Convocações Digitais", desc: "Envio de e-mail e notificações." },
               { icon: CheckCircle, label: "Votos Ilimitados", desc: "Sem limite de pautas ou usuários." },
-              { icon: Users, label: "Acesso Gratuito", desc: "Para moradores e conselheiros." },
               { icon: BarChart3, label: "Dashboard Completo", desc: "Métricas para o gestor." }
             ].map((feat, i) => (
-              <div key={i} className="flex items-start p-4 rounded-xl hover:bg-slate-50 transition-colors">
+              <div key={i} className="flex items-start p-4 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100">
                 <feat.icon className="h-6 w-6 text-emerald-600 mr-4 flex-shrink-0" />
                 <div>
                   <h4 className="font-bold text-slate-900">{feat.label}</h4>
@@ -301,117 +255,85 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
         </div>
       </section>
 
-      {/* 5. Pricing Preview (Updated) */}
+      {/* 5. Pricing Preview (ATUALIZADO: Planos Reais e Benefícios Iguais) */}
       <section id="pricing" className="py-20 bg-slate-900 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold mb-4">Planos transparentes</h2>
-            <p className="text-slate-400">Escolha o melhor modelo para sua necessidade.</p>
+            <h2 className="text-3xl font-bold mb-4">Planos que cabem no seu condomínio</h2>
+            <p className="text-slate-400">Escolha o modelo ideal baseado no número de unidades. Todos os planos incluem <strong>todas as funcionalidades.</strong></p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto items-center">
+          <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto items-start">
             
-            {/* Card 1: Avulso */}
-            <div className="bg-slate-800/50 rounded-2xl p-8 border border-slate-700">
-              <h3 className="text-xl font-bold text-slate-200">Avulso</h3>
+            {/* PLANO 1: ESSENCIAL */}
+            <div className="bg-slate-800/50 rounded-2xl p-8 border border-slate-700 hover:border-slate-500 transition-all">
+              <h3 className="text-xl font-bold text-slate-200">Essencial</h3>
+              <p className="text-xs text-emerald-400 font-bold uppercase tracking-wider mb-4">Até 30 Unidades</p>
               <div className="my-6">
-                <span className="text-4xl font-bold text-white">R$ 220</span>
-                <span className="text-slate-400">/assembleia</span>
+                <span className="text-4xl font-bold text-white">R$ 190</span>
+                <span className="text-slate-400 text-sm">/mês</span>
               </div>
-              <p className="text-slate-400 mb-8 text-sm">Para demandas pontuais e eleições anuais.</p>
+              <p className="text-slate-400 mb-8 text-sm">Ideal para condomínios pequenos e compactos.</p>
               <ul className="space-y-4 mb-8">
-                <li className="flex items-center text-sm text-slate-300">
-                  <CheckCircle className="h-5 w-5 text-emerald-500 mr-3" /> Pagamento único
-                </li>
-                <li className="flex items-center text-sm text-slate-300">
-                  <CheckCircle className="h-5 w-5 text-emerald-500 mr-3" /> Ata automática
-                </li>
-                 <li className="flex items-center text-sm text-slate-300">
-                  <CheckCircle className="h-5 w-5 text-emerald-500 mr-3" /> Recursos essenciais
-                </li>
+                <li className="flex items-center text-sm text-slate-300"><CheckCircle className="h-5 w-5 text-emerald-500 mr-3" /> Assembleia Ao Vivo</li>
+                <li className="flex items-center text-sm text-slate-300"><CheckCircle className="h-5 w-5 text-emerald-500 mr-3" /> Gestão de Reservas</li>
+                <li className="flex items-center text-sm text-slate-300"><CheckCircle className="h-5 w-5 text-emerald-500 mr-3" /> Votação Segura</li>
+                <li className="flex items-center text-sm text-slate-300"><CheckCircle className="h-5 w-5 text-emerald-500 mr-3" /> Suporte por E-mail</li>
               </ul>
-              <Link 
-                to="/pricing" 
-                className="block w-full bg-white/10 hover:bg-white/20 text-white text-center py-3 rounded-lg font-bold transition-colors"
-              >
+              <Link to="/pricing" className="block w-full bg-white/10 hover:bg-white/20 text-white text-center py-3 rounded-lg font-bold transition-colors">
                 Ver Detalhes
               </Link>
             </div>
 
-            {/* Card 2: Mensal (Popular) */}
-            <div className="bg-slate-800 rounded-2xl p-8 border-2 border-emerald-600 hover:border-emerald-500 transition-colors relative overflow-hidden group transform md:-translate-y-4 shadow-xl shadow-emerald-900/20">
-              <div className="absolute top-0 right-0 bg-emerald-600 text-white text-xs font-bold px-3 py-1 rounded-bl-xl">MAIS POPULAR</div>
-              <h3 className="text-xl font-bold text-white mb-2">Plano Mensal</h3>
-              <p className="text-emerald-100/70 text-sm mb-6 h-10">Para condomínios ativos, clubes e empresas.</p>
+            {/* PLANO 2: BUSINESS (DESTAQUE) */}
+            <div className="bg-slate-800 rounded-2xl p-8 border-2 border-emerald-500 relative transform md:-translate-y-4 shadow-2xl shadow-emerald-900/20">
+              <div className="absolute top-0 right-0 bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-bl-xl">MAIS POPULAR</div>
+              <h3 className="text-xl font-bold text-white">Business</h3>
+              <p className="text-xs text-emerald-400 font-bold uppercase tracking-wider mb-4">31 a 80 Unidades</p>
               
-              <div className="flex items-baseline mb-6">
-                <span className="text-5xl font-extrabold text-white">R$ 290</span>
-                <span className="text-slate-400 ml-2">/mês</span>
+              <div className="my-6">
+                <span className="text-4xl font-bold text-white">R$ 490</span>
+                <span className="text-slate-400 text-sm">/mês</span>
               </div>
+              <p className="text-slate-300 mb-8 text-sm">O melhor custo-benefício para a maioria.</p>
 
-              <Link 
-                to="/login" 
-                state={{ isRegister: true }}
-                className="block w-full py-4 px-4 bg-emerald-600 text-white font-bold rounded-xl text-center hover:bg-emerald-500 transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:scale-105"
-              >
-                Assinar Mensal
+              <ul className="space-y-4 mb-8">
+                <li className="flex items-center text-sm text-white"><CheckCircle className="h-5 w-5 text-emerald-400 mr-3" /> Assembleia Ao Vivo</li>
+                <li className="flex items-center text-sm text-white"><CheckCircle className="h-5 w-5 text-emerald-400 mr-3" /> Gestão de Reservas</li>
+                <li className="flex items-center text-sm text-white"><CheckCircle className="h-5 w-5 text-emerald-400 mr-3" /> Votação Segura</li>
+                <li className="flex items-center text-sm text-white"><CheckCircle className="h-5 w-5 text-emerald-400 mr-3" /> Suporte Prioritário (WhatsApp)</li>
+              </ul>
+              <Link to="/pricing" className="block w-full bg-emerald-600 hover:bg-emerald-500 text-white text-center py-4 rounded-lg font-bold transition-colors shadow-lg">
+                Escolher Business
               </Link>
-
-              <div className="mt-8 space-y-4">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tudo do Avulso, mais:</p>
-                <ul className="space-y-3 text-sm text-slate-200">
-                  <li className="flex items-start"><Zap className="w-5 h-5 text-emerald-400 mr-2 flex-shrink-0" /> <span className="font-bold">Assembleias Ilimitadas</span></li>
-                  <li className="flex items-start"><Check className="w-5 h-5 text-emerald-500 mr-2 flex-shrink-0" /> Recursos Premium liberados</li>
-                  <li className="flex items-start"><Headphones className="w-5 h-5 text-emerald-400 mr-2 flex-shrink-0" /> Suporte Prioritário (WhatsApp)</li>
-                  <li className="flex items-start"><Check className="w-5 h-5 text-emerald-500 mr-2 flex-shrink-0" /> Gestão de documentos</li>
-                  <li className="flex items-start"><Check className="w-5 h-5 text-emerald-500 mr-2 flex-shrink-0" /> Histórico vitalício</li>
-                </ul>
-              </div>
             </div>
 
-            {/* Plan 3: Anual */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 hover:shadow-xl transition-all duration-300 relative">
-               <div className="absolute top-0 inset-x-0 bg-emerald-50 h-1.5 rounded-t-2xl"></div>
-              <h3 className="text-xl font-bold text-slate-900 mb-2">VANTAGENS EXCLUSIVAS</h3>
-              <p className="text-slate-500 text-sm mb-6 h-10">Economia inteligente com foco em fidelização.</p>
+            {/* PLANO 3: CUSTOM */}
+            <div className="bg-slate-800/50 rounded-2xl p-8 border border-slate-700 hover:border-slate-500 transition-all">
+              <h3 className="text-xl font-bold text-slate-200">Custom</h3>
+              <p className="text-xs text-amber-400 font-bold uppercase tracking-wider mb-4">Acima de 80 Unidades</p>
               
-              <div className="flex items-baseline mb-2">
-                <span className="text-4xl font-extrabold text-slate-900">R$ 2.436</span>
-                <span className="text-slate-500 ml-2">/ano</span>
+              <div className="my-6">
+                <span className="text-3xl font-bold text-white">Sob Medida</span>
               </div>
-              <p className="text-emerald-600 text-xs font-bold mb-6 bg-emerald-50 inline-block px-2 py-1 rounded">30% de Desconto (Eq. R$ 203/mês)</p>
+              <p className="text-slate-400 mb-8 text-sm">Para grandes empreendimentos e clubes.</p>
 
-              <Link 
-                to="/login" 
-                state={{ isRegister: true }}
-                className="block w-full py-3 px-4 bg-slate-800 text-white font-bold rounded-xl text-center hover:bg-slate-700 transition-colors"
-              >
-                Assinar Anual
+              <ul className="space-y-4 mb-8">
+                <li className="flex items-center text-sm text-slate-300"><CheckCircle className="h-5 w-5 text-emerald-500 mr-3" /> Todas Funcionalidades</li>
+                <li className="flex items-center text-sm text-slate-300"><CheckCircle className="h-5 w-5 text-emerald-500 mr-3" /> Preço por unidade extra</li>
+                <li className="flex items-center text-sm text-slate-300"><CheckCircle className="h-5 w-5 text-emerald-500 mr-3" /> Gerente de Conta VIP</li>
+                <li className="flex items-center text-sm text-slate-300"><CheckCircle className="h-5 w-5 text-emerald-500 mr-3" /> API & Integrações</li>
+              </ul>
+              <Link to="/pricing" className="block w-full bg-white/10 hover:bg-white/20 text-white text-center py-3 rounded-lg font-bold transition-colors">
+                Simular Valor
               </Link>
-
-              <div className="mt-8 bg-emerald-50 p-6 rounded-xl border border-emerald-100">
-                <p className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4">Vantagens exclusivas:</p>
-                <ul className="space-y-3 text-sm">
-                  <li className="flex items-start"><Crown className="w-5 h-5 text-amber-500 mr-2 flex-shrink-0" /> <span className="font-bold text-slate-900">Módulo Governança Digital</span></li>
-                  <li className="flex items-start"><Check className="w-5 h-5 text-emerald-600 mr-2 flex-shrink-0" /> Gestão de Reservas de Áreas</li>
-                  <li className="flex items-start"><Check className="w-5 h-5 text-emerald-600 mr-2 flex-shrink-0" /> Enquetes e Mural Oficial</li>
-                  <li className="flex items-start"><ShieldCheck className="w-5 h-5 text-emerald-600 mr-2 flex-shrink-0" /> Suporte VIP (WhatsApp)</li>
-                  <li className="flex items-start"><Check className="w-5 h-5 text-emerald-600 mr-2 flex-shrink-0" /> Treinamento de Implantação</li>
-                </ul>
-              </div>
             </div>
 
-          </div>
-          
-          <div className="text-center mt-12">
-            <Link to="/pricing" className="text-emerald-400 hover:text-emerald-300 font-medium flex items-center justify-center mx-auto">
-              Ver tabela completa de preços <ChevronRight className="h-4 w-4 ml-1" />
-            </Link>
           </div>
         </div>
       </section>
 
-      {/* 6. How it Works */}
+      {/* 6. How it Works (Mantido igual) */}
       <section id="how-it-works" className="py-20 bg-emerald-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
            <div className="text-center mb-16">
@@ -441,33 +363,33 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
         </div>
       </section>
 
-      {/* 7. Social Proof */}
+      {/* 7. Social Proof (Mantido igual) */}
       <section className="py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
            <div className="max-w-4xl mx-auto">
-              <div className="text-center mb-10">
-                <h2 className="text-3xl font-bold text-slate-900">O que dizem nossos clientes</h2>
-              </div>
-              <div className="bg-slate-50 p-8 rounded-2xl border border-slate-100 text-center relative shadow-sm">
-                <div className="flex justify-center text-yellow-400 mb-4">
-                  {[1,2,3,4,5].map(i => <Star key={i} className="h-5 w-5 fill-current" />)}
-                </div>
-                <p className="text-slate-700 italic text-xl mb-6 font-medium leading-relaxed">"A plataforma revolucionou nossas assembleias. O quórum aumentou de 20% para 85% já na primeira votação online."</p>
-                <div className="flex items-center justify-center">
-                    <div className="w-12 h-12 rounded-full bg-slate-300 mr-4 overflow-hidden border-2 border-white shadow-sm">
-                      <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="avatar" />
-                    </div>
-                    <div className="text-left">
-                      <p className="font-bold text-slate-900">Roberto Silva</p>
-                      <p className="text-sm text-slate-500">Síndico Profissional</p>
-                    </div>
-                </div>
-              </div>
+             <div className="text-center mb-10">
+               <h2 className="text-3xl font-bold text-slate-900">O que dizem nossos clientes</h2>
+             </div>
+             <div className="bg-slate-50 p-8 rounded-2xl border border-slate-100 text-center relative shadow-sm">
+               <div className="flex justify-center text-yellow-400 mb-4">
+                 {[1,2,3,4,5].map(i => <Star key={i} className="h-5 w-5 fill-current" />)}
+               </div>
+               <p className="text-slate-700 italic text-xl mb-6 font-medium leading-relaxed">"A plataforma revolucionou nossas assembleias. O quórum aumentou de 20% para 85% já na primeira votação online."</p>
+               <div className="flex items-center justify-center">
+                   <div className="w-12 h-12 rounded-full bg-slate-300 mr-4 overflow-hidden border-2 border-white shadow-sm">
+                     <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="avatar" />
+                   </div>
+                   <div className="text-left">
+                     <p className="font-bold text-slate-900">Roberto Silva</p>
+                     <p className="text-sm text-slate-500">Síndico Profissional</p>
+                   </div>
+               </div>
+             </div>
            </div>
         </div>
       </section>
       
-      {/* 7.5. NEW Affiliates Section */}
+      {/* 7.5. Affiliates Section (ATUALIZADO LINK) */}
       <section id="affiliates" className="py-20 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white relative overflow-hidden">
         <div className="absolute top-0 right-0 p-10 opacity-5">
            <TrendingUp className="w-96 h-96" />
@@ -484,24 +406,13 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
                    Ganhe <strong className="text-white">comissões recorrentes</strong> por cada condomínio ou clube que trouxer para a plataforma.
                 </p>
                 
-                <div className="space-y-4 mb-8">
-                   <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 font-bold">1</div>
-                      <p className="text-slate-200">Cadastre-se gratuitamente no programa de afiliados.</p>
-                   </div>
-                   <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 font-bold">2</div>
-                      <p className="text-slate-200">Compartilhe seu link exclusivo com sua rede.</p>
-                   </div>
-                   <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 font-bold">3</div>
-                      <p className="text-slate-200">Receba mensalmente enquanto o cliente estiver ativo.</p>
-                   </div>
-                </div>
-
-                <button className="bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-8 py-4 rounded-full font-bold shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all hover:scale-105">
+                {/* [CORREÇÃO] Link direto para cadastro de afiliados */}
+                <Link 
+                  to="/affiliate/register" 
+                  className="inline-block bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-8 py-4 rounded-full font-bold shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all hover:scale-105"
+                >
                    Quero ser Parceiro
-                </button>
+                </Link>
               </div>
 
               <div className="md:w-1/2">
@@ -515,22 +426,10 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
                           <TrendingUp className="w-6 h-6 text-emerald-500" />
                        </div>
                     </div>
+                    {/* ... (Resto do conteúdo do card mantido) ... */}
                     <div className="space-y-4">
-                       <div className="flex justify-between items-center text-sm">
-                          <span className="text-slate-300">Condomínio Jardins</span>
-                          <span className="text-emerald-400 font-bold">+ R$ 45,00/mês</span>
-                       </div>
-                       <div className="flex justify-between items-center text-sm">
-                          <span className="text-slate-300">Clube Pinheiros</span>
-                          <span className="text-emerald-400 font-bold">+ R$ 120,00/mês</span>
-                       </div>
-                       <div className="flex justify-between items-center text-sm">
-                          <span className="text-slate-300">Assoc. Moradores Sul</span>
-                          <span className="text-emerald-400 font-bold">+ R$ 35,00/mês</span>
-                       </div>
-                       <div className="mt-4 pt-4 border-t border-slate-700 text-center">
-                          <p className="text-xs text-slate-500">Dashboard de parceiro em tempo real</p>
-                       </div>
+                       <div className="flex justify-between items-center text-sm"><span className="text-slate-300">Condomínio Jardins</span><span className="text-emerald-400 font-bold">+ R$ 45,00/mês</span></div>
+                       <div className="flex justify-between items-center text-sm"><span className="text-slate-300">Clube Pinheiros</span><span className="text-emerald-400 font-bold">+ R$ 120,00/mês</span></div>
                     </div>
                  </div>
               </div>
@@ -543,22 +442,9 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
         <div className="absolute inset-0 bg-emerald-700 opacity-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-400 via-transparent to-transparent"></div>
         <h2 className="text-3xl md:text-4xl font-bold text-white mb-6 relative z-10">Pronto para modernizar sua assembleia?</h2>
         <div className="flex flex-col sm:flex-row justify-center gap-4 relative z-10">
-           {user ? (
-             <Link 
-               to="/dashboard" 
-               className="bg-white text-emerald-700 px-8 py-4 rounded-full font-bold shadow-lg hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
-             >
-               <LayoutDashboard className="w-5 h-5" />
-               Acessar Plataforma
-             </Link>
-           ) : (
-             <Link to="/login" state={{ isRegister: true }} className="bg-white text-emerald-700 px-8 py-4 rounded-full font-bold shadow-lg hover:bg-slate-50 transition-colors">
-               Criar Conta
-             </Link>
-           )}
-           <button className="bg-emerald-700 text-white border border-emerald-500 px-8 py-4 rounded-full font-bold hover:bg-emerald-800 transition-colors">
-             Solicitar Demonstração
-           </button>
+           <Link to="/pricing" className="bg-white text-emerald-700 px-8 py-4 rounded-full font-bold shadow-lg hover:bg-slate-50 transition-colors">
+             Ver Planos e Assinar
+           </Link>
         </div>
       </section>
 
@@ -568,32 +454,25 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
            <div className="grid md:grid-cols-4 gap-8 mb-8">
               <div>
                  <div className="mb-4">
-                    <Link to="/">
-                        <Logo theme="light" showSlogan={true} />
-                    </Link>
+                    <Link to="/"><Logo theme="light" showSlogan={true} /></Link>
                  </div>
                  <p className="text-sm">Tecnologia para decisões democráticas e transparentes.</p>
               </div>
-              
               <div>
                  <h4 className="text-white font-bold mb-4">Empresa</h4>
                  <ul className="space-y-2 text-sm">
                     <li><Link to="/pricing" className="hover:text-white">Preços</Link></li>
                     <li><Link to="/blog" className="hover:text-white">Blog</Link></li>
                     <li><Link to="/faq" className="hover:text-white">FAQ</Link></li>
-                    <li><Link to="/testimonials" className="hover:text-white">Depoimentos</Link></li>
                  </ul>
               </div>
-
               <div>
                  <h4 className="text-white font-bold mb-4">Legal</h4>
                  <ul className="space-y-2 text-sm">
                     <li><Link to="/terms" className="hover:text-white">Termos de Uso</Link></li>
                     <li><Link to="/privacy" className="hover:text-white">Privacidade</Link></li>
-                    <li><Link to="/compliance" className="hover:text-white">Compliance</Link></li>
                  </ul>
               </div>
-
               <div>
                  <h4 className="text-white font-bold mb-4">Contato</h4>
                  <ul className="space-y-2 text-sm">
