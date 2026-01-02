@@ -67,7 +67,7 @@ function StatsView() {
         const res = await api.get('/admin/dashboard-stats');
         setLatency(Date.now() - start);
         setStats(res.data);
-      } catch (err) { console.error(err); }
+      } catch (err) { console.error("Erro ao carregar stats:", err); }
       setLoading(false);
     };
     fetchData();
@@ -111,7 +111,7 @@ function OrganizedUsersView() {
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    api.get('/admin/organized-users').then(res => setData(res.data));
+    api.get('/admin/organized-users').then(res => setData(res.data)).catch(console.error);
   }, []);
 
   if (!data) return <div className="p-20 text-center animate-pulse text-slate-400 font-black">Indexando pastas de usuários...</div>;
@@ -199,7 +199,7 @@ const UserTable = ({ users, search }: any) => {
               </td>
               <td className="py-4 px-2 font-black text-slate-700 text-xs">{u.unidade ? `${u.bloco || ''} - ${u.unidade}` : 'ADM'}</td>
               <td className="py-4 px-2 text-center">
-                <button onClick={() => {/* logic */}} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
+                <button className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
               </td>
             </tr>
           ))}
@@ -221,51 +221,32 @@ function CouponsManager() {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-       <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100">
+    <div className="max-w-xl mx-auto bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100">
          <h3 className="text-2xl font-black mb-8 flex items-center gap-3 text-emerald-600"><Tag size={28}/> Gerador de Lote</h3>
          <form onSubmit={handleCreate} className="space-y-6">
-           <div>
-             <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Código Prefixo</label>
-             <input required placeholder="EX: PROMO2025" value={form.code} onChange={e => setForm({...form, code: e.target.value.toUpperCase()})} className="w-full p-4 bg-slate-50 border-none rounded-2xl font-mono text-xl tracking-[0.3em] focus:ring-2 focus:ring-emerald-500" />
-           </div>
+           <input required placeholder="CÓDIGO PREFIXO" value={form.code} onChange={e => setForm({...form, code: e.target.value.toUpperCase()})} className="w-full p-4 bg-slate-50 border-none rounded-2xl font-mono text-xl tracking-[0.3em] focus:ring-2 focus:ring-emerald-500" />
            <div className="grid grid-cols-2 gap-4">
-             <div>
-                <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">% Desconto</label>
-                <input required type="number" value={form.discount} onChange={e => setForm({...form, discount: e.target.value})} className="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold" />
-             </div>
-             <div>
-                <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Qtd Cupons</label>
-                <input required type="number" value={form.quantity} onChange={e => setForm({...form, quantity: Number(e.target.value)})} className="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold" />
-             </div>
+             <input required type="number" placeholder="% Desconto" value={form.discount} onChange={e => setForm({...form, discount: e.target.value})} className="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold" />
+             <input required type="number" placeholder="Quantidade" value={form.quantity} onChange={e => setForm({...form, quantity: Number(e.target.value)})} className="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold" />
            </div>
-           <button type="submit" className="w-full bg-emerald-600 text-white py-5 rounded-[2rem] font-black text-lg hover:bg-emerald-700 shadow-lg shadow-emerald-100 transition-all">Criar Lote de Cupons</button>
+           <button type="submit" className="w-full bg-emerald-600 text-white py-5 rounded-[2rem] font-black text-lg hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100">Criar Lote de Cupons</button>
          </form>
-       </div>
-       <div className="bg-slate-900 rounded-[3rem] p-10 flex flex-col items-center justify-center text-center">
-          <div className="p-6 bg-white/5 rounded-full mb-4"><Tag className="text-emerald-500" size={40}/></div>
-          <h4 className="text-white font-black text-xl">Gestão de Ofertas</h4>
-          <p className="text-slate-400 text-sm mt-2 max-w-[250px]">Aqui você pode emitir cupons em massa para campanhas de marketing ou parcerias.</p>
-       </div>
     </div>
   );
 }
 
-// --- 4. ATIVAÇÃO MANUAL ---
+// --- 4. ATIVAÇÃO MANUAL (COM OLHINHO E CONFIRMAÇÃO) ---
 function ManualCondoCreator() {
   const [showPass, setShowPass] = useState(false);
-  const [form, setForm] = useState({
-    condoName: '', cnpj: '', qtyUnits: 30, secretKeyword: '',
-    nameSyndic: '', emailSyndic: '', cpfSyndic: '', phoneSyndic: '',
-    passwordSyndic: '', confirm: ''
+  const [form, setForm] = useState({ 
+    condoName: '', cnpj: '', qtyUnits: 30, secretKeyword: '', 
+    nameSyndic: '', emailSyndic: '', cpfSyndic: '', phoneSyndic: '', 
+    passwordSyndic: '', confirm: '' 
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (form.passwordSyndic !== form.confirm) {
-        alert("As senhas do síndico não coincidem!");
-        return;
-    }
+    if (form.passwordSyndic !== form.confirm) return alert("As senhas do síndico não coincidem!");
     try {
       await api.post('/admin/create-tenant-manual', {
           condoName: form.condoName,
@@ -275,7 +256,7 @@ function ManualCondoCreator() {
           nameSyndic: form.nameSyndic,
           emailSyndic: form.emailSyndic,
           cpfSyndic: form.cpfSyndic,
-          phoneSyndic: form.phoneSyndic,
+          phoneSyndic: form.phoneSyndic, // Alinhado com o AdminService.java
           passwordSyndic: form.passwordSyndic
       });
       alert('Condomínio e Síndico ativados com sucesso!');
@@ -335,7 +316,7 @@ function CreateAdminForm() {
                 nome: form.nome,
                 email: form.email,
                 cpf: form.cpf,
-                whatsapp: form.phone, // Alinhado com o controller que espera whatsapp
+                whatsapp: form.phone, // Alinhado com o controller
                 password: form.password
             });
             alert("Novo administrador Votzz criado com sucesso!");

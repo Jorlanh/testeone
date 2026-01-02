@@ -1,32 +1,34 @@
-// src/types.ts - ATUALIZADO
+// src/types.ts - ARQUIVO DE DEFINIÇÕES COMPLETO
+
+// --- Tipos Globais de Usuário ---
 export type UserRole = 'ADMIN' | 'SINDICO' | 'ADM_CONDO' | 'MORADOR' | 'AFILIADO' | 'MANAGER';
 
-// Login Request
+// --- Autenticação ---
 export interface LoginRequest {
   login: string; // Pode ser email ou CPF
   password: string;
 }
 
-// Interface principal do Usuário
 export interface User {
   id: string;
   nome: string;      
-  name: string;      
+  name: string;      // Compatibilidade com código legado
   email: string;
   cpf?: string;      
   unidade?: string;  
-  unit?: string;     
+  unit?: string;     // Compatibilidade
   bloco?: string;    
-  block?: string;    
+  block?: string;    // Compatibilidade
   whatsapp: string;
-  phone?: string;    
+  phone?: string;    // Compatibilidade
   role: UserRole;
   tenantId?: string | null;
   fraction?: number;
   is2faEnabled?: boolean;
+  avatarUrl?: string;
+  lastSeen?: string;
 }
 
-// Resposta do Login
 export interface LoginResponse {
   token: string;
   type?: string;     
@@ -40,7 +42,6 @@ export interface LoginResponse {
   cpf?: string;
 }
 
-// Auth Context
 export interface AuthContextType {
   user: User | null;
   token: string | null;
@@ -48,9 +49,28 @@ export interface AuthContextType {
   loading: boolean;
   login: (data: LoginResponse) => void;
   logout: () => void;
+  updateUser: (data: Partial<User>) => void;
 }
 
-// --- Enumerações de Negócio ---
+// --- Dashboards e Métricas ---
+export interface AdminDashboardStats {
+  totalTenants: number;
+  activeTenants: number;
+  totalUsers: number;
+  onlineUsers: number;
+  mrr: number; // Campo crítico (minúsculo) para o gráfico de receita
+  latencyMs?: number; 
+}
+
+export interface AffiliateDashboardDTO {
+  saldoDisponivel: number;
+  saldoFuturo: number;
+  linkIndicacao: string;
+  vendasTotais?: number;
+  cliquesLink?: number;
+}
+
+// --- Assembleias e Votação ---
 export enum VoteType {
   YES_NO_ABSTAIN = 'YES_NO_ABSTAIN',
   MULTIPLE_CHOICE = 'MULTIPLE_CHOICE',
@@ -70,11 +90,10 @@ export enum AssemblyStatus {
   SCHEDULED = 'SCHEDULED'
 }
 
-// --- Interfaces de Negócio ---
 export interface Assembly {
   id: string;
   title: string;
-  titulo?: string;
+  titulo?: string; // Compatibilidade
   description: string;
   status: AssemblyStatus;
   startDate: string;
@@ -89,50 +108,8 @@ export interface Assembly {
   pollOptions?: any[];
   linkVideoConferencia?: string;
   youtubeLiveUrl?: string; 
+  relatorioIaUrl?: string;
   attachments?: string[]; 
-}
-
-export interface AdminDashboardStats {
-  totalTenants: number;
-  activeTenants: number;
-  totalUsers: number;
-  onlineUsers: number;
-  mrr: number;
-  latencyMs?: number; // Para o monitoramento de lag
-}
-
-export interface GovernanceActivity {
-  id: string;
-  type: string;
-  description: string;
-  timestamp: string;
-  userId: string;
-}
-
-export interface BlogPost {
-  id: string;
-  title: string;
-  slug: string;
-  content: string;
-  date: string;
-  author: string;
-  excerpt?: string;
-  image?: string;
-  category?: string;
-}
-
-export interface AffiliateDashboardDTO {
-  saldoDisponivel: number;
-  saldoFuturo: number;
-  linkIndicacao: string;
-}
-
-export interface AuditLog {
-  id: string;
-  timestamp: string;
-  action: string;
-  userId: string;
-  details: string;
 }
 
 export interface Poll {
@@ -146,6 +123,20 @@ export interface Poll {
   endDate: string;
 }
 
+// --- Chat em Tempo Real ---
+export interface ChatMessage {
+  id?: string;
+  assemblyId: string;
+  userId: string;
+  userName: string;
+  senderName?: string; // Compatibilidade
+  content: string;
+  timestamp?: string;
+  createdAt?: string;
+  role?: string;
+}
+
+// --- Comunicação e Avisos ---
 export interface Announcement {
   id: string;
   title: string;
@@ -158,6 +149,7 @@ export interface Announcement {
   requiresConfirmation: boolean;
 }
 
+// --- Áreas Comuns e Reservas ---
 export interface CommonArea {
   id: string;
   name: string;
@@ -168,6 +160,7 @@ export interface CommonArea {
   closeTime: string;
   description: string;
   rules?: string;
+  requiresApproval?: boolean;
 }
 
 export type BookingStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'COMPLETED';
@@ -175,7 +168,9 @@ export type BookingStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 
 export interface Booking {
   id: string;
   areaId: string;
+  areaName?: string; // Útil para listagem
   userId: string;
+  userName?: string;
   unit: string;
   date: string;
   startTime: string;
@@ -183,4 +178,89 @@ export interface Booking {
   status: BookingStatus;
   totalPrice: number;
   createdAt?: string;
+}
+
+// --- Chamados (Tickets) ---
+export enum TicketStatus {
+  OPEN = 'OPEN',
+  IN_PROGRESS = 'IN_PROGRESS',
+  RESOLVED = 'RESOLVED',
+  CLOSED = 'CLOSED'
+}
+
+export enum TicketPriority {
+  LOW = 'LOW',
+  NORMAL = 'NORMAL',
+  HIGH = 'HIGH',
+  URGENT = 'URGENT'
+}
+
+export interface Ticket {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  status: TicketStatus;
+  priority: TicketPriority;
+  userId: string;
+  userName?: string;
+  userUnit?: string;
+  createdAt: string;
+  updatedAt: string;
+  messages?: TicketMessage[];
+  attachments?: string[];
+}
+
+export interface TicketMessage {
+  id: string;
+  ticketId: string;
+  senderId: string;
+  senderName: string;
+  message: string;
+  sentAt: string;
+  isAdminSender: boolean;
+}
+
+// --- Governança e Auditoria ---
+export interface GovernanceActivity {
+  id: string;
+  type: string;
+  description: string;
+  timestamp: string;
+  userId: string;
+  ipAddress?: string;
+}
+
+export interface AuditLog {
+  id: string;
+  timestamp: string;
+  action: string;
+  userId: string;
+  userName?: string;
+  details: string;
+  resourceType?: string;
+}
+
+// --- Blog e Conteúdo ---
+export interface BlogPost {
+  id: string;
+  title: string;
+  slug: string;
+  content: string;
+  date: string;
+  author: string;
+  excerpt?: string;
+  image?: string;
+  category?: string;
+}
+
+// --- Financeiro (Se houver) ---
+export interface FinancialTransaction {
+  id: string;
+  description: string;
+  amount: number;
+  type: 'INCOME' | 'EXPENSE';
+  category: string;
+  date: string;
+  status: 'PAID' | 'PENDING' | 'OVERDUE';
 }
