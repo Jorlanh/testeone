@@ -2,7 +2,7 @@
 import axios from 'axios';
 
 export const api = axios.create({
-  // Adicionado (import.meta as any) para evitar erro de compilação TS
+  // Solução para o erro de TS no import.meta.env
   baseURL: (import.meta as any).env.VITE_API_URL || 'http://localhost:8080/api',
   headers: {
     'Content-Type': 'application/json',

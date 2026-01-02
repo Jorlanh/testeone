@@ -5,7 +5,7 @@ interface AuthContextData {
   user: User | null;
   isAuthenticated: boolean;
   login: (data: LoginResponse) => void;
-  signOut: () => void; // ou 'logout', mantenha o padrão que você usa
+  signOut: () => void;
   loading: boolean;
 }
 
@@ -16,7 +16,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Ao carregar a página, recupera o usuário salvo
+    // Ao carregar a página, recupera o usuário salvo com as chaves corretas
     const storedUser = localStorage.getItem('@Votzz:user');
     const storedToken = localStorage.getItem('@Votzz:token');
 
@@ -27,29 +27,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = (data: LoginResponse) => {
-    // [CORREÇÃO] Mapeamento Explícito para garantir que Bloco e Unidade sejam salvos
     const userToSave: User = {
         id: data.id,
         nome: data.nome,
-        name: data.nome, // Compatibilidade
+        name: data.nome, 
         email: data.email,
         role: data.role,
         tenantId: data.tenantId,
         
-        // AQUI ESTÁ O SEGREDO: Pegando os dados novos do Backend
+        // Dados adicionais
         bloco: data.bloco,
         unidade: data.unidade,
         cpf: data.cpf,
         
-        // Garantindo compatibilidade com campos em inglês se houver
         block: data.bloco,
         unit: data.unidade,
-        whatsapp: '' // Se o login não retorna, fica vazio ou pega de outro lugar
+        whatsapp: '' 
     };
 
     setUser(userToSave);
 
-    // Salva no LocalStorage para persistir no F5
     localStorage.setItem('@Votzz:user', JSON.stringify(userToSave));
     localStorage.setItem('@Votzz:token', data.token);
   };

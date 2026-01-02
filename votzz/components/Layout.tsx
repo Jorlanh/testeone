@@ -34,7 +34,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const handleLogout = () => {
     if (signOut) signOut();
-    // [CORREÇÃO] Redireciona para a Landing Page (/) em vez do Login
     navigate('/'); 
   };
 
@@ -46,15 +45,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const getUserSubtitle = () => {
     if (!user) return 'Visitante';
 
-    // Prioridade para cargos de gestão
+    // Prioridade para cargos
+    if (user.role === 'AFILIADO') return 'Parceiro Oficial';
     if (user.role === 'SINDICO') return 'Síndico Profissional';
     if (user.role === 'ADM_CONDO' || user.role === 'MANAGER') return 'Administrador';
+    if (user.role === 'ADMIN') return 'Super Admin';
     
     // Lógica para Morador
     const bloco = user.bloco || user.block || '';
     const unidade = user.unidade || user.unit || '';
 
-    // Formato: "B [bloco] e Und [unidade]"
     if (bloco && unidade) {
         return `B ${bloco} e Und ${unidade}`;
     }
@@ -73,9 +73,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const menuItems = [
     { 
       label: 'Dashboard', 
-      path: '/dashboard', 
+      path: user?.role === 'AFILIADO' ? '/affiliate/dashboard' : (user?.role === 'ADMIN' ? '/admin/dashboard' : '/dashboard'), 
       icon: LayoutDashboard,
-      allowed: ['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER', 'AFILIADO']
+      allowed: ['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER', 'AFILIADO', 'ADMIN']
     },
     { 
       label: 'Governança', 
@@ -106,6 +106,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       path: '/reports', 
       icon: ShieldAlert,
       allowed: ['SINDICO', 'ADM_CONDO', 'MANAGER']
+    },
+    { 
+        label: 'Meu Perfil', 
+        path: '/profile', 
+        icon: Settings,
+        // Ocultar perfil da sidebar apenas para Afiliados
+        allowed: ['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER', 'ADMIN'] 
     }
   ];
 
@@ -115,7 +122,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       {/* --- SIDEBAR DESKTOP --- */}
       <aside className="hidden md:flex flex-col w-64 bg-slate-900 text-slate-300 fixed h-full z-20 shadow-xl border-r border-slate-800">
         <div className="p-6 flex items-center justify-center border-b border-slate-800">
-           <Link to="/dashboard" className="hover:opacity-80 transition-opacity">
+           <Link to={user?.role === 'AFILIADO' ? "/affiliate/dashboard" : (user?.role === 'ADMIN' ? "/admin/dashboard" : "/dashboard")} className="hover:opacity-80 transition-opacity">
               <Logo theme="dark" />
            </Link>
         </div>
@@ -141,7 +148,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           })}
         </nav>
 
-        {/* SEÇÃO DO PERFIL */}
+        {/* SEÇÃO DO PERFIL NA BASE */}
         <div className="p-4 border-t border-slate-800 bg-slate-900/90">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 rounded-full bg-emerald-900/50 flex items-center justify-center text-emerald-400 font-bold text-lg border border-emerald-500/30 shrink-0 shadow-inner">
@@ -158,15 +165,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </div>
           
           <div className="grid grid-cols-2 gap-2">
-            <Link 
-              to="/profile" 
-              className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-xs py-2 rounded-lg transition-colors text-slate-300 hover:text-white border border-slate-700"
-            >
-              <Settings size={14} /> Perfil
-            </Link>
+            {user?.role !== 'AFILIADO' && (
+                <Link 
+                to="/profile" 
+                className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-xs py-2 rounded-lg transition-colors text-slate-300 hover:text-white border border-slate-700"
+                >
+                <Settings size={14} /> Perfil
+                </Link>
+            )}
+            
             <button 
               onClick={handleLogout}
-              className="flex items-center justify-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 text-xs py-2 rounded-lg transition-colors border border-red-900/30"
+              className={`flex items-center justify-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 text-xs py-2 rounded-lg transition-colors border border-red-900/30 ${user?.role === 'AFILIADO' ? 'col-span-2' : ''}`}
             >
               <LogOut size={14} /> Sair
             </button>
@@ -219,10 +229,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               </div>
               
               <div className="grid grid-cols-2 gap-3">
-                  <Link to="/profile" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center justify-center gap-2 p-3 rounded-xl text-slate-300 bg-slate-800 border border-slate-700 font-medium">
-                    <Settings size={18} /> Dados
-                  </Link>
-                  <button onClick={handleLogout} className="flex items-center justify-center gap-2 p-3 rounded-xl text-red-400 bg-red-900/20 border border-red-900/50 font-medium">
+                  {user?.role !== 'AFILIADO' && (
+                      <Link to="/profile" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center justify-center gap-2 p-3 rounded-xl text-slate-300 bg-slate-800 border border-slate-700 font-medium">
+                        <Settings size={18} /> Dados
+                      </Link>
+                  )}
+                  <button onClick={handleLogout} className={`flex items-center justify-center gap-2 p-3 rounded-xl text-red-400 bg-red-900/20 border border-red-900/50 font-medium ${user?.role === 'AFILIADO' ? 'col-span-2' : ''}`}>
                     <LogOut size={18} /> Sair
                   </button>
               </div>

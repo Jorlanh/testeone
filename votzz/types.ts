@@ -1,5 +1,4 @@
-// src/types.ts
-
+// src/types.ts - ATUALIZADO
 export type UserRole = 'ADMIN' | 'SINDICO' | 'ADM_CONDO' | 'MORADOR' | 'AFILIADO' | 'MANAGER';
 
 // Login Request
@@ -8,28 +7,26 @@ export interface LoginRequest {
   password: string;
 }
 
-// Interface principal do Usuário (Usada no Contexto e Components)
+// Interface principal do Usuário
 export interface User {
   id: string;
   nome: string;      
-  name: string;      // Compatibilidade
+  name: string;      
   email: string;
   cpf?: string;      
-  
-  // Dados de Unidade
   unidade?: string;  
   unit?: string;     
   bloco?: string;    
-  block?: string;    // Compatibilidade
-  
+  block?: string;    
   whatsapp: string;
   phone?: string;    
   role: UserRole;
   tenantId?: string | null;
   fraction?: number;
+  is2faEnabled?: boolean;
 }
 
-// Resposta do Login (TEM QUE BATER COM O DTO DO JAVA)
+// Resposta do Login
 export interface LoginResponse {
   token: string;
   type?: string;     
@@ -38,8 +35,6 @@ export interface LoginResponse {
   email: string;
   role: UserRole;
   tenantId?: string | null;
-  
-  // [NOVO] Campos essenciais para o Layout exibir "Bl. X - Ap. Y"
   bloco?: string;
   unidade?: string;
   cpf?: string;
@@ -71,7 +66,8 @@ export enum AssemblyStatus {
   DRAFT = 'DRAFT',
   OPEN = 'OPEN',
   CLOSED = 'CLOSED',
-  AGENDADA = 'AGENDADA'
+  AGENDADA = 'AGENDADA',
+  SCHEDULED = 'SCHEDULED'
 }
 
 // --- Interfaces de Negócio ---
@@ -82,7 +78,9 @@ export interface Assembly {
   description: string;
   status: AssemblyStatus;
   startDate: string;
+  dataInicio?: string;
   endDate: string;
+  dataFim?: string;
   voteType?: VoteType;
   votePrivacy?: VotePrivacy;
   options?: { id: string; label: string }[];
@@ -90,40 +88,37 @@ export interface Assembly {
   pollVotes?: any[];
   pollOptions?: any[];
   linkVideoConferencia?: string;
-}
-
-export interface CommonArea {
-  id: string;
-  name: string;
-  capacity: number;
-  price: number;
-  imageUrl: string;
-  openTime: string;
-  closeTime: string;
-  description: string;
-  rules?: string;
-}
-
-export type BookingStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'COMPLETED';
-
-export interface Booking {
-  id: string;
-  areaId: string;
-  userId: string;
-  unit: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  status: BookingStatus;
-  totalPrice: number;
-  createdAt?: string;
+  youtubeLiveUrl?: string; 
+  attachments?: string[]; 
 }
 
 export interface AdminDashboardStats {
   totalTenants: number;
   activeTenants: number;
   totalUsers: number;
+  onlineUsers: number;
   mrr: number;
+  latencyMs?: number; // Para o monitoramento de lag
+}
+
+export interface GovernanceActivity {
+  id: string;
+  type: string;
+  description: string;
+  timestamp: string;
+  userId: string;
+}
+
+export interface BlogPost {
+  id: string;
+  title: string;
+  slug: string;
+  content: string;
+  date: string;
+  author: string;
+  excerpt?: string;
+  image?: string;
+  category?: string;
 }
 
 export interface AffiliateDashboardDTO {
@@ -161,4 +156,31 @@ export interface Announcement {
   targetValue?: string;
   readBy: string[];
   requiresConfirmation: boolean;
+}
+
+export interface CommonArea {
+  id: string;
+  name: string;
+  capacity: number;
+  price: number;
+  imageUrl: string;
+  openTime: string;
+  closeTime: string;
+  description: string;
+  rules?: string;
+}
+
+export type BookingStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'COMPLETED';
+
+export interface Booking {
+  id: string;
+  areaId: string;
+  userId: string;
+  unit: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  status: BookingStatus;
+  totalPrice: number;
+  createdAt?: string;
 }
