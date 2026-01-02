@@ -12,7 +12,7 @@ export interface LoginRequest {
 export interface User {
   id: string;
   nome: string;      
-  name: string;      // Compatibilidade com código legado
+  name: string;      // Compatibilidade
   email: string;
   cpf?: string;      
   unidade?: string;  
@@ -52,14 +52,14 @@ export interface AuthContextType {
   updateUser: (data: Partial<User>) => void;
 }
 
-// --- Dashboards e Métricas ---
+// --- Dashboards e Métricas (Super Admin) ---
 export interface AdminDashboardStats {
   totalTenants: number;
   activeTenants: number;
   totalUsers: number;
   onlineUsers: number;
-  mrr: number; // Campo crítico (minúsculo) para o gráfico de receita
-  latencyMs?: number; 
+  mrr: number; // Essencial para exibir a receita no gráfico
+  latencyMs?: number; // Essencial para o monitor de lag
 }
 
 export interface AffiliateDashboardDTO {
@@ -254,7 +254,7 @@ export interface BlogPost {
   category?: string;
 }
 
-// --- Financeiro (Se houver) ---
+// --- Financeiro ---
 export interface FinancialTransaction {
   id: string;
   description: string;

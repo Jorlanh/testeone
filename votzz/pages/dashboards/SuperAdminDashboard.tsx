@@ -67,7 +67,7 @@ function StatsView() {
         const res = await api.get('/admin/dashboard-stats');
         setLatency(Date.now() - start);
         setStats(res.data);
-      } catch (err) { console.error("Erro ao carregar stats:", err); }
+      } catch (err) { console.error(err); }
       setLoading(false);
     };
     fetchData();
@@ -199,7 +199,7 @@ const UserTable = ({ users, search }: any) => {
               </td>
               <td className="py-4 px-2 font-black text-slate-700 text-xs">{u.unidade ? `${u.bloco || ''} - ${u.unidade}` : 'ADM'}</td>
               <td className="py-4 px-2 text-center">
-                <button className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
+                <button onClick={() => {/* logic */}} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
               </td>
             </tr>
           ))}
@@ -229,24 +229,27 @@ function CouponsManager() {
              <input required type="number" placeholder="% Desconto" value={form.discount} onChange={e => setForm({...form, discount: e.target.value})} className="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold" />
              <input required type="number" placeholder="Quantidade" value={form.quantity} onChange={e => setForm({...form, quantity: Number(e.target.value)})} className="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold" />
            </div>
-           <button type="submit" className="w-full bg-emerald-600 text-white py-5 rounded-[2rem] font-black text-lg hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100">Criar Lote de Cupons</button>
+           <button type="submit" className="w-full bg-emerald-600 text-white py-5 rounded-[2rem] font-black text-lg hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100">Lançar Lote de Cupons</button>
          </form>
     </div>
   );
 }
 
-// --- 4. ATIVAÇÃO MANUAL (COM OLHINHO E CONFIRMAÇÃO) ---
+// --- 4. ATIVAÇÃO MANUAL ---
 function ManualCondoCreator() {
   const [showPass, setShowPass] = useState(false);
-  const [form, setForm] = useState({ 
-    condoName: '', cnpj: '', qtyUnits: 30, secretKeyword: '', 
-    nameSyndic: '', emailSyndic: '', cpfSyndic: '', phoneSyndic: '', 
-    passwordSyndic: '', confirm: '' 
+  const [form, setForm] = useState({
+    condoName: '', cnpj: '', qtyUnits: 30, secretKeyword: '',
+    nameSyndic: '', emailSyndic: '', cpfSyndic: '', phoneSyndic: '',
+    passwordSyndic: '', confirm: ''
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (form.passwordSyndic !== form.confirm) return alert("As senhas do síndico não coincidem!");
+    if (form.passwordSyndic !== form.confirm) {
+        alert("As senhas do síndico não coincidem!");
+        return;
+    }
     try {
       await api.post('/admin/create-tenant-manual', {
           condoName: form.condoName,
@@ -256,7 +259,7 @@ function ManualCondoCreator() {
           nameSyndic: form.nameSyndic,
           emailSyndic: form.emailSyndic,
           cpfSyndic: form.cpfSyndic,
-          phoneSyndic: form.phoneSyndic, // Alinhado com o AdminService.java
+          phoneSyndic: form.phoneSyndic,
           passwordSyndic: form.passwordSyndic
       });
       alert('Condomínio e Síndico ativados com sucesso!');
@@ -316,7 +319,7 @@ function CreateAdminForm() {
                 nome: form.nome,
                 email: form.email,
                 cpf: form.cpf,
-                whatsapp: form.phone, // Alinhado com o controller
+                whatsapp: form.phone,
                 password: form.password
             });
             alert("Novo administrador Votzz criado com sucesso!");
