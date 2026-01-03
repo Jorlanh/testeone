@@ -25,12 +25,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // DEBUG: Para conferir se os dados estão chegando
-  useEffect(() => {
-    if (user) {
-        console.log("DEBUG LAYOUT - Usuário:", user);
-    }
-  }, [user]);
+  // ID do Super Admin (Deve ser igual ao do Backend)
+  const SUPER_ADMIN_ID = "10000000-0000-0000-0000-000000000000";
 
   const handleLogout = () => {
     if (signOut) signOut();
@@ -45,30 +41,35 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const getUserSubtitle = () => {
     if (!user) return 'Visitante';
 
-    // Prioridade para cargos
+    // 1. Admins
+    if (user.role === 'ADMIN') {
+        return user.id === SUPER_ADMIN_ID ? 'SUPER ADMIN' : 'Admin Votzz';
+    }
+
+    // 2. Outros Cargos
     if (user.role === 'AFILIADO') return 'Parceiro Oficial';
     if (user.role === 'SINDICO') return 'Síndico Profissional';
     if (user.role === 'ADM_CONDO' || user.role === 'MANAGER') return 'Administrador';
-    if (user.role === 'ADMIN') return 'Super Admin';
     
-    // Lógica para Morador
-    const bloco = user.bloco || user.block || '';
-    const unidade = user.unidade || user.unit || '';
+    // 3. Morador
+    const bloco = user.bloco || '';
+    const unidade = user.unidade || '';
 
-    if (bloco && unidade) {
-        return `B ${bloco} e Und ${unidade}`;
-    }
-    
-    if (unidade && !bloco) {
-        return `Und ${unidade}`;
-    }
-
+    if (bloco && unidade) return `B ${bloco} - Und ${unidade}`;
+    if (unidade && !bloco) return `Und ${unidade}`;
     if (user.role === 'MORADOR') return 'Morador';
     
     return 'Visitante';
   };
 
   const userSubtitle = getUserSubtitle();
+  
+  // Cor do subtítulo (Vermelho para Super Admin, Verde para Admin, Padrão para outros)
+  const subtitleColorClass = user?.id === SUPER_ADMIN_ID 
+      ? "text-[10px] font-black text-red-500 uppercase tracking-widest" 
+      : user?.role === 'ADMIN' 
+          ? "text-xs font-bold text-emerald-500" 
+          : "text-xs text-emerald-400 truncate font-medium";
 
   const menuItems = [
     { 
@@ -106,14 +107,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       path: '/reports', 
       icon: ShieldAlert,
       allowed: ['SINDICO', 'ADM_CONDO', 'MANAGER']
-    },
-    { 
-        label: 'Meu Perfil', 
-        path: '/profile', 
-        icon: Settings,
-        // Ocultar perfil da sidebar apenas para Afiliados
-        allowed: ['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER', 'ADMIN'] 
     }
+    // "Meu Perfil" REMOVIDO DAQUI para ficar apenas no footer
   ];
 
   return (
@@ -148,26 +143,27 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           })}
         </nav>
 
-        {/* SEÇÃO DO PERFIL NA BASE */}
+        {/* SEÇÃO DO PERFIL NA BASE (FOOTER) */}
         <div className="p-4 border-t border-slate-800 bg-slate-900/90">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-full bg-emerald-900/50 flex items-center justify-center text-emerald-400 font-bold text-lg border border-emerald-500/30 shrink-0 shadow-inner">
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg border shrink-0 shadow-inner ${user?.id === SUPER_ADMIN_ID ? 'bg-red-500/20 text-red-500 border-red-500/50' : 'bg-emerald-900/50 text-emerald-400 border-emerald-500/30'}`}>
               {userName.charAt(0).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-white font-bold text-sm truncate" title={userName}>
-                {userName.split(' ')[0]}
+                {userName.split(' ')[0]} {userName.split(' ')[1] || ''}
               </p>
-              <p className="text-xs text-emerald-400 truncate font-medium" title={userSubtitle}>
+              <p className={subtitleColorClass} title={userSubtitle}>
                 {userSubtitle}
               </p>
             </div>
           </div>
           
           <div className="grid grid-cols-2 gap-2">
+            {/* Botão Perfil: Mostra para todos exceto Afiliados (que tem painel próprio) */}
             {user?.role !== 'AFILIADO' && (
                 <Link 
-                to="/profile" 
+                to={user?.role === 'ADMIN' ? '/admin/dashboard' : '/profile'} 
                 className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-xs py-2 rounded-lg transition-colors text-slate-300 hover:text-white border border-slate-700"
                 >
                 <Settings size={14} /> Perfil
@@ -219,18 +215,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             
             <div className="border-t border-slate-700 pt-6 mt-6">
               <div className="flex items-center gap-3 mb-6 px-2 bg-slate-800/50 p-4 rounded-xl border border-slate-700">
-                <div className="w-10 h-10 rounded-full bg-emerald-900/30 flex items-center justify-center text-emerald-500 font-bold border border-emerald-500/30">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border ${user?.id === SUPER_ADMIN_ID ? 'bg-red-500/20 text-red-500 border-red-500/50' : 'bg-emerald-900/30 text-emerald-500 border-emerald-500/30'}`}>
                   {userName.charAt(0).toUpperCase()}
                 </div>
                 <div>
                   <p className="text-white text-sm font-bold">{userName}</p>
-                  <p className="text-xs text-emerald-400">{userSubtitle}</p>
+                  <p className={subtitleColorClass}>{userSubtitle}</p>
                 </div>
               </div>
               
               <div className="grid grid-cols-2 gap-3">
                   {user?.role !== 'AFILIADO' && (
-                      <Link to="/profile" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center justify-center gap-2 p-3 rounded-xl text-slate-300 bg-slate-800 border border-slate-700 font-medium">
+                      <Link to={user?.role === 'ADMIN' ? '/admin/dashboard' : '/profile'} onClick={() => setIsMobileMenuOpen(false)} className="flex items-center justify-center gap-2 p-3 rounded-xl text-slate-300 bg-slate-800 border border-slate-700 font-medium">
                         <Settings size={18} /> Dados
                       </Link>
                   )}
