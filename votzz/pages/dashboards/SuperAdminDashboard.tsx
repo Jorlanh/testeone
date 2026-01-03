@@ -3,7 +3,8 @@ import api from '../../services/api';
 import { AdminDashboardStats, User } from '../../types';
 import { 
   Users, Building, DollarSign, Tag, Plus, Save, 
-  ShieldAlert, LayoutDashboard, Search, Folder, UserPlus, Trash2, Activity, UserCircle, Edit, MapPin, X, CalendarClock, Mail, Lock
+  ShieldAlert, LayoutDashboard, Search, Folder, UserPlus, Trash2, Activity, UserCircle, Edit, MapPin, X, CalendarClock, Mail, Lock, FileText,
+  Eye, EyeOff, Power, CalendarPlus
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -34,6 +35,7 @@ export default function SuperAdminDashboard() {
         <TabBtn label="Dashboard" icon={<LayoutDashboard size={18}/>} active={activeTab === 'STATS'} onClick={() => setActiveTab('STATS')} />
         <TabBtn label="Usuários" icon={<Folder size={18}/>} active={activeTab === 'USERS'} onClick={() => setActiveTab('USERS')} />
         <TabBtn label="Condomínios" icon={<Building size={18}/>} active={activeTab === 'TENANTS'} onClick={() => setActiveTab('TENANTS')} />
+        <TabBtn label="Auditoria" icon={<FileText size={18}/>} active={activeTab === 'AUDIT'} onClick={() => setActiveTab('AUDIT')} />
         <TabBtn label="Admins" icon={<ShieldAlert size={18}/>} active={activeTab === 'ADMINS'} onClick={() => setActiveTab('ADMINS')} />
         <TabBtn label="Cupons" icon={<Tag size={18}/>} active={activeTab === 'COUPONS'} onClick={() => setActiveTab('COUPONS')} />
         <TabBtn label="Novo Condo" icon={<Plus size={18}/>} active={activeTab === 'MANUAL_CONDO'} onClick={() => setActiveTab('MANUAL_CONDO')} />
@@ -45,6 +47,7 @@ export default function SuperAdminDashboard() {
         {activeTab === 'STATS' && <StatsView />}
         {activeTab === 'USERS' && <OrganizedUsersView />}
         {activeTab === 'TENANTS' && <TenantsManager />}
+        {activeTab === 'AUDIT' && <AuditLogView />}
         {activeTab === 'ADMINS' && <AdminsList currentUser={currentUser} />}
         {activeTab === 'COUPONS' && <CouponsManager />}
         {activeTab === 'MANUAL_CONDO' && <ManualCondoCreator />}
@@ -61,6 +64,44 @@ function TabBtn({ label, icon, active, onClick }: any) {
       {icon} {label}
     </button>
   );
+}
+
+// --- AUDIT LOG VIEW ---
+function AuditLogView() {
+    const [logs, setLogs] = useState<any[]>([]);
+    
+    useEffect(() => {
+        api.get('/admin/audit-logs').then(res => setLogs(res.data)).catch(console.error);
+    }, []);
+
+    return (
+        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+            <h3 className="text-xl font-black mb-6 flex items-center gap-2"><FileText className="text-blue-500"/> Auditoria de Ações</h3>
+            <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                    <thead>
+                        <tr className="text-slate-400 text-[10px] font-black uppercase border-b">
+                            <th className="pb-4">Data/Hora</th>
+                            <th className="pb-4">Administrador</th>
+                            <th className="pb-4">Ação</th>
+                            <th className="pb-4 w-1/2">Detalhes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {logs.map((log) => (
+                            <tr key={log.id} className="border-b last:border-0 hover:bg-slate-50">
+                                <td className="py-4 font-mono text-xs text-slate-500">{new Date(log.timestamp).toLocaleString()}</td>
+                                <td className="font-bold text-slate-700">{log.userName}</td>
+                                <td><span className="bg-slate-100 px-2 py-1 rounded text-[10px] font-black uppercase">{log.action}</span></td>
+                                <td className="text-slate-600 font-medium">{log.details}</td>
+                            </tr>
+                        ))}
+                        {logs.length === 0 && <tr><td colSpan={4} className="py-8 text-center text-slate-400">Nenhuma ação registrada ainda.</td></tr>}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
 }
 
 // --- 1. ADMINS LIST ---
@@ -132,7 +173,7 @@ function TenantsManager() {
         e.preventDefault();
         try {
             await api.put(`/admin/tenants/${editingTenant.id}`, editingTenant);
-            alert("Atualizado!"); setEditingTenant(null); load();
+            alert("Atualizado com sucesso!"); setEditingTenant(null); load();
         } catch (e) { alert("Erro ao atualizar."); }
     };
 
@@ -143,50 +184,105 @@ function TenantsManager() {
         return days > 0 ? `${days} dias` : 'Vencido';
     };
 
+    // Helper para adicionar dias na data de expiração
+    const addDays = (days: number) => {
+        const current = editingTenant.dataExpiracaoPlano ? new Date(editingTenant.dataExpiracaoPlano) : new Date();
+        current.setDate(current.getDate() + days);
+        setEditingTenant({...editingTenant, dataExpiracaoPlano: current.toISOString()});
+    };
+
     return (
         <div className="space-y-4">
              {editingTenant && (
                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                     <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
                         <div className="flex justify-between mb-4">
-                            <h3 className="font-bold text-xl">Editar {editingTenant.nome}</h3>
+                            <h3 className="font-bold text-xl flex items-center gap-2"><Edit size={20}/> Editar {editingTenant.nome}</h3>
                             <button onClick={() => setEditingTenant(null)}><X /></button>
                         </div>
-                        <form onSubmit={handleUpdate} className="space-y-4">
-                            <input className="w-full p-3 border rounded-xl" value={editingTenant.nome} onChange={e => setEditingTenant({...editingTenant, nome: e.target.value})} placeholder="Nome"/>
-                            <input className="w-full p-3 border rounded-xl" value={editingTenant.cnpj} onChange={e => setEditingTenant({...editingTenant, cnpj: e.target.value})} placeholder="CNPJ"/>
-                            <div className="bg-slate-50 p-4 rounded-xl space-y-3">
-                                <p className="text-xs font-bold text-slate-400 uppercase">Endereço</p>
-                                <input className="w-full p-3 bg-white border rounded-xl" placeholder="CEP" value={editingTenant.cep || ''} onChange={e => { setEditingTenant({...editingTenant, cep: e.target.value}); fetchCep(e.target.value); }} />
-                                <input className="w-full p-3 bg-white border rounded-xl" placeholder="Logradouro" value={editingTenant.logradouro || ''} onChange={e => setEditingTenant({...editingTenant, logradouro: e.target.value})} />
-                                <div className="grid grid-cols-3 gap-2">
-                                    <input className="p-3 bg-white border rounded-xl" placeholder="Nº" value={editingTenant.numero || ''} onChange={e => setEditingTenant({...editingTenant, numero: e.target.value})} />
-                                    <input className="p-3 bg-white border rounded-xl" placeholder="Bairro" value={editingTenant.bairro || ''} onChange={e => setEditingTenant({...editingTenant, bairro: e.target.value})} />
-                                    <input className="p-3 bg-white border rounded-xl" placeholder="Cidade" value={editingTenant.cidade || ''} onChange={e => setEditingTenant({...editingTenant, cidade: e.target.value})} />
+                        <form onSubmit={handleUpdate} className="space-y-6">
+                            
+                            {/* SEÇÃO DE ASSINATURA E STATUS (NOVO) */}
+                            <div className="bg-indigo-50 p-5 rounded-[1.5rem] border border-indigo-100">
+                                <h4 className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-3 flex items-center gap-1"><Power size={14}/> Gestão de Assinatura & Status</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase">Status do Condomínio</label>
+                                        <select 
+                                            className={`w-full p-3 border rounded-xl font-bold ${editingTenant.ativo ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-red-100 text-red-700 border-red-200'}`}
+                                            value={editingTenant.ativo ? 'true' : 'false'}
+                                            onChange={e => setEditingTenant({...editingTenant, ativo: e.target.value === 'true'})}
+                                        >
+                                            <option value="true">ATIVO (Sistema Liberado)</option>
+                                            <option value="false">INATIVO (Bloqueado)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase">Plano Vigente</label>
+                                        <select 
+                                            className="w-full p-3 bg-white border rounded-xl font-bold text-slate-700"
+                                            value={typeof editingTenant.plano === 'string' ? editingTenant.plano : editingTenant.plano?.nome || 'MENSAL'}
+                                            onChange={e => setEditingTenant({...editingTenant, plano: e.target.value})}
+                                        >
+                                            <option value="MENSAL">Mensal</option>
+                                            <option value="TRIMESTRAL">Trimestral</option>
+                                            <option value="SEMESTRAL">Semestral</option>
+                                            <option value="ANUAL">Anual</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="mt-4">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Data de Expiração (Manual)</label>
+                                    <div className="flex gap-2 items-center">
+                                        <input 
+                                            type="date"
+                                            className="flex-1 p-3 bg-white border rounded-xl font-mono text-sm"
+                                            value={editingTenant.dataExpiracaoPlano ? new Date(editingTenant.dataExpiracaoPlano).toISOString().split('T')[0] : ''}
+                                            onChange={e => setEditingTenant({...editingTenant, dataExpiracaoPlano: new Date(e.target.value).toISOString()})}
+                                        />
+                                        <button type="button" onClick={() => addDays(30)} className="px-3 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100">+30 Dias</button>
+                                        <button type="button" onClick={() => addDays(365)} className="px-3 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100">+1 Ano</button>
+                                    </div>
                                 </div>
                             </div>
-                            <input className="w-full p-3 border rounded-xl" value={editingTenant.secretKeyword} onChange={e => setEditingTenant({...editingTenant, secretKeyword: e.target.value})} placeholder="Palavra-chave"/>
-                            <button className="w-full bg-emerald-600 text-white p-3 rounded-xl font-bold">Salvar</button>
+
+                            <div className="space-y-4">
+                                <input className="w-full p-3 border rounded-xl" value={editingTenant.nome} onChange={e => setEditingTenant({...editingTenant, nome: e.target.value})} placeholder="Nome"/>
+                                <input className="w-full p-3 border rounded-xl" value={editingTenant.cnpj} onChange={e => setEditingTenant({...editingTenant, cnpj: e.target.value})} placeholder="CNPJ"/>
+                                <div className="bg-slate-50 p-4 rounded-xl space-y-3">
+                                    <p className="text-xs font-bold text-slate-400 uppercase">Endereço</p>
+                                    <input className="w-full p-3 bg-white border rounded-xl" placeholder="CEP" value={editingTenant.cep || ''} onChange={e => { setEditingTenant({...editingTenant, cep: e.target.value}); fetchCep(e.target.value); }} />
+                                    <input className="w-full p-3 bg-white border rounded-xl" placeholder="Logradouro" value={editingTenant.logradouro || ''} onChange={e => setEditingTenant({...editingTenant, logradouro: e.target.value})} />
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <input className="p-3 bg-white border rounded-xl" placeholder="Nº" value={editingTenant.numero || ''} onChange={e => setEditingTenant({...editingTenant, numero: e.target.value})} />
+                                        <input className="p-3 bg-white border rounded-xl" placeholder="Bairro" value={editingTenant.bairro || ''} onChange={e => setEditingTenant({...editingTenant, bairro: e.target.value})} />
+                                        <input className="p-3 bg-white border rounded-xl" placeholder="Cidade" value={editingTenant.cidade || ''} onChange={e => setEditingTenant({...editingTenant, cidade: e.target.value})} />
+                                    </div>
+                                </div>
+                                <input className="w-full p-3 border rounded-xl" value={editingTenant.secretKeyword} onChange={e => setEditingTenant({...editingTenant, secretKeyword: e.target.value})} placeholder="Palavra-chave"/>
+                            </div>
+                            
+                            <button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-4 rounded-xl font-bold shadow-lg shadow-emerald-200 transition-all">Salvar Alterações</button>
                         </form>
                     </div>
                 </div>
              )}
 
             {tenants.map(t => (
-                <div key={t.id} className="bg-white p-6 rounded-[2rem] border shadow-sm flex flex-col md:flex-row md:items-center justify-between hover:shadow-md transition-shadow gap-4">
+                <div key={t.id} className={`bg-white p-6 rounded-[2rem] border shadow-sm flex flex-col md:flex-row md:items-center justify-between hover:shadow-md transition-shadow gap-4 ${!t.ativo ? 'opacity-75 bg-slate-50' : ''}`}>
                     <div>
                         <h4 className="font-black text-slate-800 flex items-center gap-2 text-lg">
-                            <Building size={20} className="text-blue-500"/> {t.nome} 
+                            <Building size={20} className={t.ativo ? "text-blue-500" : "text-slate-400"}/> {t.nome} 
                             {t.ativo ? <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full uppercase font-bold">Ativo</span> : <span className="text-[10px] bg-red-100 text-red-700 px-2 py-1 rounded-full uppercase font-bold">Inativo</span>}
                         </h4>
                         <div className="mt-2 ml-7 space-y-1">
                             <p className="text-xs text-slate-400 font-mono font-bold">CNPJ: {t.cnpj} | Key: {t.secretKeyword}</p>
-                            <p className="text-xs text-slate-500 font-bold flex items-center gap-1"><CalendarClock size={12}/> Plano: {t.plano?.nome || 'Nenhum'} ({getDaysRemaining(t.dataExpiracaoPlano)})</p>
+                            <p className="text-xs text-slate-500 font-bold flex items-center gap-1"><CalendarClock size={12}/> Plano: {typeof t.plano === 'string' ? t.plano : t.plano?.nome || 'Manual'} ({getDaysRemaining(t.dataExpiracaoPlano)})</p>
                             {t.cidade && <p className="text-xs text-slate-500 font-bold flex items-center gap-1"><MapPin size={12}/> {t.cidade}/{t.estado}</p>}
                         </div>
                     </div>
                     <button onClick={() => setEditingTenant(t)} className="flex items-center gap-2 text-slate-500 hover:text-white hover:bg-blue-600 font-bold text-xs bg-slate-100 px-5 py-3 rounded-xl transition-all self-start md:self-center">
-                        <Edit size={16}/> Editar
+                        <Edit size={16}/> Gerenciar
                     </button>
                 </div>
             ))}
@@ -262,6 +358,9 @@ function OrganizedUsersView() {
   const [search, setSearch] = useState('');
   const [editingUser, setEditingUser] = useState<any>(null);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  
+  // Default role changed to MORADOR, user can change to ADM_CONDO
   const [newUser, setNewUser] = useState({ tenantId: '', nome: '', email: '', password: 'votzz', role: 'MORADOR', cpf: '', whatsapp: '', unidade: '', bloco: '' });
 
   const loadData = () => {
@@ -276,15 +375,26 @@ function OrganizedUsersView() {
           await api.post('/admin/create-user-linked', newUser);
           alert("Criado!"); setIsCreatingUser(false); loadData();
           setNewUser({ tenantId: '', nome: '', email: '', password: 'votzz', role: 'MORADOR', cpf: '', whatsapp: '', unidade: '', bloco: '' });
-      } catch(e: any) { alert(e.response?.data?.message || "Erro"); }
+      } catch(e: any) { 
+          const msg = e.response?.data?.error || e.response?.data?.message || "Erro desconhecido";
+          alert("Erro ao criar usuário: " + msg);
+      }
   };
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-        await api.put(`/admin/users/${editingUser.id}`, { dto: editingUser, newPassword: editingUser.newPassword });
+        const payload: any = { 
+            nome: editingUser.nome,
+            email: editingUser.email,
+            cpf: editingUser.cpf,
+            whatsapp: editingUser.whatsapp
+        };
+        if(editingUser.newPassword) payload.newPassword = editingUser.newPassword;
+
+        await api.put(`/admin/users/${editingUser.id}`, payload);
         alert("Atualizado!"); setEditingUser(null); loadData();
-    } catch (e) { alert("Erro."); }
+    } catch (e) { alert("Erro ao atualizar."); }
   };
 
   const handleDelete = async (id: string) => {
@@ -322,13 +432,13 @@ function OrganizedUsersView() {
                       <input required className="w-full p-3 border rounded-xl" placeholder="Email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})}/>
                       <div className="grid grid-cols-2 gap-3">
                           <input className="p-3 border rounded-xl" placeholder="CPF" value={newUser.cpf} onChange={e => setNewUser({...newUser, cpf: e.target.value})}/>
-                          <input className="p-3 border rounded-xl" placeholder="Zap" value={newUser.whatsapp} onChange={e => setNewUser({...newUser, whatsapp: e.target.value})}/>
+                          <input className="p-3 border rounded-xl" placeholder="WhatsApp" value={newUser.whatsapp} onChange={e => setNewUser({...newUser, whatsapp: e.target.value})}/>
                       </div>
                       <div className="grid grid-cols-3 gap-3">
                           <select className="p-3 border rounded-xl" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
                               <option value="MORADOR">Morador</option>
                               <option value="SINDICO">Síndico</option>
-                              <option value="PORTEIRO">Porteiro</option>
+                              <option value="ADM_CONDO">Administrador</option>
                           </select>
                           <input className="p-3 border rounded-xl" placeholder="Und" value={newUser.unidade} onChange={e => setNewUser({...newUser, unidade: e.target.value})}/>
                           <input className="p-3 border rounded-xl" placeholder="Bloco" value={newUser.bloco} onChange={e => setNewUser({...newUser, bloco: e.target.value})}/>
@@ -350,7 +460,12 @@ function OrganizedUsersView() {
                         <input className="w-full p-3 border rounded-xl" placeholder="CPF" value={editingUser.cpf || ''} onChange={e => setEditingUser({...editingUser, cpf: e.target.value})} />
                         <input className="w-full p-3 border rounded-xl" placeholder="WhatsApp" value={editingUser.whatsapp || ''} onChange={e => setEditingUser({...editingUser, whatsapp: e.target.value})} />
                     </div>
-                    <input className="w-full p-3 border border-yellow-300 bg-yellow-50 rounded-xl" type="password" placeholder="Nova Senha (opcional)" onChange={e => setEditingUser({...editingUser, newPassword: e.target.value})} />
+                    <div className="relative">
+                        <input className="w-full p-3 border border-yellow-300 bg-yellow-50 rounded-xl pr-10" type={showPassword ? "text" : "password"} placeholder="Nova Senha (opcional)" onChange={e => setEditingUser({...editingUser, newPassword: e.target.value})} />
+                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-3 text-yellow-600">
+                             {showPassword ? <EyeOff size={20}/> : <Eye size={20}/>}
+                        </button>
+                    </div>
                     <div className="flex gap-2">
                         <button type="button" onClick={() => setEditingUser(null)} className="flex-1 p-3 bg-slate-200 rounded-xl font-bold">Cancelar</button>
                         <button type="submit" className="flex-1 p-3 bg-blue-600 text-white rounded-xl font-bold">Salvar</button>
@@ -365,8 +480,8 @@ function OrganizedUsersView() {
         <div className="p-6 bg-white text-slate-800"><UserTable users={data.afiliados} search={search} onEdit={setEditingUser} onDelete={handleDelete} /></div>
       </details>
       {Object.entries(data.pastas).map(([nome, moradores]: any) => (
-        <details key={nome} className="bg-white rounded-[2rem] border shadow-sm overflow-hidden group">
-          <summary className="p-6 cursor-pointer font-black flex justify-between items-center"><div className="flex gap-4 items-center"><Folder className="text-blue-500" /> {nome}</div><Plus /></summary>
+        <details key={nome} className="bg-white rounded-[2rem] border shadow-sm overflow-hidden group mb-4">
+          <summary className="p-6 cursor-pointer font-black flex justify-between items-center"><div className="flex gap-4 items-center"><Folder className="text-blue-500" /> {nome}</div><div className="flex items-center gap-2"><span className="text-xs bg-slate-100 px-2 py-1 rounded-lg text-slate-500 font-bold">{moradores.length}</span><Plus size={16} className="text-slate-300"/></div></summary>
           <div className="p-6 border-t"><UserTable users={moradores} search={search} onEdit={setEditingUser} onDelete={handleDelete} /></div>
         </details>
       ))}
@@ -376,6 +491,7 @@ function OrganizedUsersView() {
 
 const UserTable = ({ users, search, onEdit, onDelete }: any) => {
   const filtered = users.filter((u: any) => u.nome.toLowerCase().includes(search.toLowerCase()));
+  if (filtered.length === 0) return <div className="text-center py-4 text-slate-400 text-xs font-bold uppercase">Nenhum usuário nesta pasta</div>;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
@@ -400,6 +516,7 @@ const UserTable = ({ users, search, onEdit, onDelete }: any) => {
 // --- MANUAL CONDO ---
 function ManualCondoCreator() {
   const [form, setForm] = useState<any>({ condoName: '', cnpj: '', qtyUnits: 30, secretKeyword: '', nameSyndic: '', emailSyndic: '', cpfSyndic: '', phoneSyndic: '', passwordSyndic: '', confirm: '', cep: '', logradouro: '', numero: '', bairro: '', cidade: '', estado: '', pontoReferencia: '' });
+  const [showPassword, setShowPassword] = useState(false);
 
   const fetchCep = async (cep: string) => {
       const cleanCep = cep.replace(/\D/g, '');
@@ -455,9 +572,16 @@ function ManualCondoCreator() {
                 <input required placeholder="CPF" value={form.cpfSyndic} onChange={e => setForm({...form, cpfSyndic: e.target.value})} className="p-4 bg-white rounded-2xl font-bold" />
                 <input required placeholder="WhatsApp" value={form.phoneSyndic} onChange={e => setForm({...form, phoneSyndic: e.target.value})} className="p-4 bg-white rounded-2xl font-bold" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-                <input required type="password" placeholder="Senha" value={form.passwordSyndic} onChange={e => setForm({...form, passwordSyndic: e.target.value})} className="p-4 bg-white rounded-2xl font-bold" />
-                <input required type="password" placeholder="Confirmar" value={form.confirm} onChange={e => setForm({...form, confirm: e.target.value})} className="p-4 bg-white rounded-2xl font-bold" />
+            <div className="grid grid-cols-2 gap-4 relative">
+                <div className="relative">
+                    <input required type={showPassword ? "text" : "password"} placeholder="Senha" value={form.passwordSyndic} onChange={e => setForm({...form, passwordSyndic: e.target.value})} className="w-full p-4 bg-white rounded-2xl font-bold pr-10" />
+                </div>
+                <div className="relative">
+                    <input required type={showPassword ? "text" : "password"} placeholder="Confirmar" value={form.confirm} onChange={e => setForm({...form, confirm: e.target.value})} className="w-full p-4 bg-white rounded-2xl font-bold pr-10" />
+                </div>
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-[-40px] top-4 text-slate-400">
+                     {showPassword ? <EyeOff /> : <Eye />}
+                </button>
             </div>
         </div>
         <button type="submit" className="w-full py-6 bg-slate-900 hover:bg-black text-white rounded-[2.5rem] font-black text-xl transition-all">Criar Condomínio e Usuário</button>
@@ -469,6 +593,8 @@ function ManualCondoCreator() {
 // --- CRIAR ADMIN ---
 function CreateAdminForm() {
     const [form, setForm] = useState({ nome: '', email: '', cpf: '', phone: '', password: '', confirm: '' });
+    const [showPassword, setShowPassword] = useState(false);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (form.password !== form.confirm) return alert("Senhas não coincidem!");
@@ -487,8 +613,11 @@ function CreateAdminForm() {
                   <input required placeholder="CPF" value={form.cpf} onChange={e => setForm({...form, cpf: e.target.value})} className="w-full p-5 bg-slate-50 border-none rounded-2xl font-bold" />
                   <input required placeholder="WhatsApp" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="w-full p-5 bg-slate-50 border-none rounded-2xl font-bold" />
                 </div>
-                <input required type="password" placeholder="Senha" value={form.password} onChange={e => setForm({...form, password: e.target.value})} className="w-full p-5 bg-slate-50 rounded-2xl font-bold" />
-                <input required type="password" placeholder="Confirmar" value={form.confirm} onChange={e => setForm({...form, confirm: e.target.value})} className="w-full p-5 bg-slate-50 rounded-2xl font-bold" />
+                <div className="relative">
+                    <input required type={showPassword ? "text" : "password"} placeholder="Senha" value={form.password} onChange={e => setForm({...form, password: e.target.value})} className="w-full p-5 bg-slate-50 rounded-2xl font-bold pr-12" />
+                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-5 text-slate-400">{showPassword ? <EyeOff /> : <Eye />}</button>
+                </div>
+                <input required type={showPassword ? "text" : "password"} placeholder="Confirmar" value={form.confirm} onChange={e => setForm({...form, confirm: e.target.value})} className="w-full p-5 bg-slate-50 rounded-2xl font-bold" />
                 <button type="submit" className="w-full bg-red-600 text-white py-6 rounded-[2rem] font-black text-lg hover:bg-red-700 uppercase">Criar Admin</button>
              </form>
         </div>
@@ -537,8 +666,9 @@ const StatCard = ({ icon, title, value, color }: any) => (
   </div>
 );
 
-// --- PERFIL DO ADMIN (CORRIGIDO) ---
+// --- PERFIL DO ADMIN ---
 function AdminProfileView({ user }: { user: any }) {
+    const [showPassword, setShowPassword] = useState(false);
     const [form, setForm] = useState({
         nome: user?.nome || '',
         email: user?.email || '',
@@ -548,7 +678,6 @@ function AdminProfileView({ user }: { user: any }) {
         confirmPassword: ''
     });
 
-    // Atualiza o form quando o user carrega
     useEffect(() => {
         if (user) {
             setForm(prev => ({
@@ -563,28 +692,21 @@ function AdminProfileView({ user }: { user: any }) {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        
-        // Validação de senha
         if (form.password && form.password !== form.confirmPassword) {
             return alert("As senhas não coincidem!");
         }
 
         try {
-            // payload plano (sem 'dto')
             const payload: any = {
                 nome: form.nome,
                 email: form.email,
                 cpf: form.cpf,
                 whatsapp: form.whatsapp
             };
-
-            // Só adiciona a senha se tiver sido alterada
             if (form.password) {
                 payload.newPassword = form.password;
             }
-
             await api.put(`/admin/users/${user.id}`, payload);
-            
             alert("Perfil atualizado com sucesso!");
             window.location.reload(); 
         } catch (error: any) {
@@ -608,53 +730,40 @@ function AdminProfileView({ user }: { user: any }) {
             <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
                     <label className="text-xs font-bold text-slate-400 ml-2 uppercase">Nome Completo</label>
-                    <input 
-                        className="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold text-slate-700 outline-none focus:ring-2 ring-emerald-200"
-                        value={form.nome}
-                        onChange={e => setForm({...form, nome: e.target.value})}
-                    />
+                    <input className="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold text-slate-700 outline-none focus:ring-2 ring-emerald-200" value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} />
                 </div>
-
                 <div>
                     <label className="text-xs font-bold text-slate-400 ml-2 uppercase">E-mail de Acesso</label>
-                    <input 
-                        className="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold text-slate-700 outline-none focus:ring-2 ring-emerald-200"
-                        value={form.email}
-                        onChange={e => setForm({...form, email: e.target.value})}
-                    />
+                    <input className="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold text-slate-700 outline-none focus:ring-2 ring-emerald-200" value={form.email} onChange={e => setForm({...form, email: e.target.value})} />
                 </div>
-
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <label className="text-xs font-bold text-slate-400 ml-2 uppercase">CPF</label>
-                        <input 
-                            className="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold text-slate-700 outline-none focus:ring-2 ring-emerald-200"
-                            value={form.cpf}
-                            onChange={e => setForm({...form, cpf: e.target.value})}
-                        />
+                        <input className="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold text-slate-700 outline-none focus:ring-2 ring-emerald-200" value={form.cpf} onChange={e => setForm({...form, cpf: e.target.value})} />
                     </div>
                     <div>
                         <label className="text-xs font-bold text-slate-400 ml-2 uppercase">WhatsApp</label>
-                        <input 
-                            className="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold text-slate-700 outline-none focus:ring-2 ring-emerald-200"
-                            value={form.whatsapp}
-                            onChange={e => setForm({...form, whatsapp: e.target.value})}
-                        />
+                        <input className="w-full p-4 bg-slate-50 border-none rounded-2xl font-bold text-slate-700 outline-none focus:ring-2 ring-emerald-200" value={form.whatsapp} onChange={e => setForm({...form, whatsapp: e.target.value})} />
                     </div>
                 </div>
 
                 <div className="border-t pt-4 mt-4 border-slate-100">
-                    <p className="text-sm font-bold text-slate-400 mb-3 flex items-center gap-2"><Lock size={16}/> Alterar Senha (Opcional)</p>
+                    <div className="flex justify-between items-center mb-3">
+                        <p className="text-sm font-bold text-slate-400 flex items-center gap-2"><Lock size={16}/> Alterar Senha (Opcional)</p>
+                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="text-emerald-600 text-sm font-bold flex items-center gap-1 hover:text-emerald-700">
+                            {showPassword ? <><EyeOff size={16}/> Ocultar</> : <><Eye size={16}/> Mostrar</>}
+                        </button>
+                    </div>
                     <div className="grid grid-cols-2 gap-4">
                         <input 
-                            type="password"
+                            type={showPassword ? "text" : "password"}
                             placeholder="Nova Senha"
                             className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold outline-none focus:ring-2 ring-emerald-200"
                             value={form.password}
                             onChange={e => setForm({...form, password: e.target.value})}
                         />
                         <input 
-                            type="password"
+                            type={showPassword ? "text" : "password"}
                             placeholder="Confirmar"
                             className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-bold outline-none focus:ring-2 ring-emerald-200"
                             value={form.confirmPassword}
@@ -663,10 +772,7 @@ function AdminProfileView({ user }: { user: any }) {
                     </div>
                 </div>
 
-                <button 
-                    type="submit" 
-                    className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-[2rem] font-black text-lg transition-all shadow-lg shadow-emerald-200 mt-6"
-                >
+                <button type="submit" className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-[2rem] font-black text-lg transition-all shadow-lg shadow-emerald-200 mt-6">
                     Salvar Alterações
                 </button>
             </form>
