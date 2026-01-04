@@ -1,4 +1,3 @@
-// App.tsx completo e corrigido
 import React from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -76,17 +75,16 @@ function App() {
           <Route path="/affiliate/register" element={<AffiliateRegister />} />
 
           {/* --- ÁREA LOGADA --- */}
-          {/* CORREÇÃO: Removido user={null} e onLogout dos Layouts */}
           
           <Route path="/dashboard" element={
             <PrivateRoute allowedRoles={['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER']}>
-              <Layout><Dashboard user={null} /></Layout>
+              <Layout><Dashboard /></Layout>
             </PrivateRoute>
           } />
 
           <Route path="/assemblies" element={
             <PrivateRoute allowedRoles={['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER']}>
-              <Layout><AssemblyList user={null} /></Layout>
+              <Layout><AssemblyList /></Layout>
             </PrivateRoute>
           } />
 
@@ -134,7 +132,7 @@ function App() {
 
           <Route path="/subscription/renew" element={
             <PrivateRoute allowedRoles={['SINDICO', 'MANAGER']}>
-                <Layout><SubscriptionRenovation /></Layout>
+               <Layout><SubscriptionRenovation /></Layout>
             </PrivateRoute>
           } />
 

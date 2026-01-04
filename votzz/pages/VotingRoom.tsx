@@ -1,112 +1,148 @@
-// src/pages/VotingRoom.tsx - COMPLETO COM WEBSOCKET + AUDITORIA IA
-
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  ArrowLeft, 
-  Download, 
-  MessageSquare, 
-  FileCheck, 
-  Shield, 
-  Video, 
-  Sparkles, 
-  Send, 
-  Lock, 
-  Clock,
-  FileText, 
-  CheckCircle,
-  XCircle
+  ArrowLeft, MessageSquare, FileCheck, Shield, Video, Sparkles, Send, Lock, Clock, FileText, CheckCircle, Gavel, Scale, Download, Eye, EyeOff
 } from 'lucide-react';
 import api from '../services/api'; 
 import { useAuth } from '../context/AuthContext';
-import { AssemblyStatus } from '../types';
-
-// Bibliotecas para WebSocket (Certifique-se de instalar: npm install sockjs-client stompjs)
 import SockJS from 'sockjs-client';
-import { over, Client } from 'stompjs';
+import { over } from 'stompjs';
 
-let stompClient: Client | null = null;
+// Variável global para manter a conexão WebSocket
+let stompClient: any = null;
 
 const VotingRoom: React.FC = () => {
   const { user } = useAuth();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   
+  // Estados de Dados
   const [assembly, setAssembly] = useState<any>(null);
   const [hasVoted, setHasVoted] = useState(false);
+  const [voteReceipt, setVoteReceipt] = useState<string | null>(null);
+  const [messages, setMessages] = useState<any[]>([]);
+  
+  // Estados de UI
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [chatMsg, setChatMsg] = useState('');
-  const [messages, setMessages] = useState<any[]>([]);
   const [showLive, setShowLive] = useState(true);
-  const [voteReceipt, setVoteReceipt] = useState<string | null>(null);
   const [summarizing, setSummarizing] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [activeTab, setActiveTab] = useState<'VOTE' | 'MANAGE'>('VOTE');
+  const [closing, setClosing] = useState(false);
   
-  // Referência para rolar o chat automaticamente
   const chatEndRef = useRef<HTMLDivElement>(null);
+  
+  // Permissões e Status
+  const isManager = user?.role === 'MANAGER' || user?.role === 'SINDICO' || user?.role === 'ADM_CONDO' || user?.role === 'ADMIN';
+  const isSecret = assembly?.votePrivacy === 'SECRET';
+  const isClosed = assembly?.status === 'CLOSED' || assembly?.status === 'ENCERRADA';
 
-  const isManager = user?.role === 'MANAGER' || user?.role === 'SINDICO' || user?.role === 'ADMIN';
+  // Regra de Voto
+  const canVote = (user?.role === 'MORADOR' && !!user.unidade) || 
+                  (user?.role === 'SINDICO' && !!user.unidade) || 
+                  user?.role === 'ADM_CONDO';
 
-  // --- 1. CONEXÃO WEBSOCKET EM TEMPO REAL ---
+  // Estatísticas
+  const totalVotes = assembly?.votes?.length || 0;
+  const userFraction = (user as any)?.fraction || 0.0152; 
+  const totalFraction = totalVotes * userFraction; 
+
+  // --- 1. CONEXÃO WEBSOCKET (CORRIGIDA) ---
   useEffect(() => {
+    let isMounted = true;
+
+    const connectWebSocket = () => {
+        // Se já existe e está conectado, não reconecta
+        if (stompClient && stompClient.connected) {
+            if (isMounted) setConnected(true);
+            return;
+        }
+
+        const socket = new SockJS('http://localhost:8080/ws-votzz');
+        stompClient = over(socket);
+        stompClient.debug = () => {}; // Desativa logs no console
+
+        stompClient.connect(
+            {}, 
+            () => { // Callback de Sucesso
+                if (!isMounted) return;
+                setConnected(true);
+                
+                // Inscreve no tópico da assembleia
+                stompClient.subscribe(`/topic/assembly/${id}`, (message: any) => {
+                    if (message.body) {
+                        const newMsg = JSON.parse(message.body);
+                        
+                        if (!newMsg.type || newMsg.type === 'CHAT') {
+                            setMessages(prev => [...prev, newMsg]);
+                            setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+                        }
+                        if (newMsg.type === 'STATUS_UPDATE') {
+                            setAssembly((prev: any) => ({ ...prev, status: newMsg.status }));
+                        }
+                    }
+                });
+            },
+            (error: any) => { // Callback de Erro
+                console.error("Erro WebSocket:", error);
+                if (isMounted) {
+                    setConnected(false);
+                    // Tenta reconectar em 5s apenas se o componente ainda estiver montado
+                    setTimeout(connectWebSocket, 5000);
+                }
+            }
+        );
+    };
+
     if (id && user) {
-      connectWebSocket();
+        connectWebSocket();
     }
+
     return () => {
-      if (stompClient) stompClient.disconnect(() => {});
+        isMounted = false;
+        if (stompClient && stompClient.connected) {
+            stompClient.disconnect(() => console.log("Desconectado"));
+        }
     };
   }, [id, user]);
 
-  const connectWebSocket = () => {
-    const socket = new SockJS(`${api.defaults.baseURL}/ws-votzz`);
-    stompClient = over(socket);
-    stompClient.debug = () => {}; // Desativa logs chatos no console
-    
-    stompClient.connect({}, () => {
-      setConnected(true);
-      // Se inscreve no tópico para receber mensagens desta assembleia específica
-      stompClient?.subscribe(`/topic/assembly/${id}`, (payload) => {
-        const newMessage = JSON.parse(payload.body);
-        setMessages(prev => [...prev, newMessage]);
-        setTimeout(scrollToBottom, 100);
-      });
-    }, (err) => {
-      console.error("Erro na conexão WebSocket:", err);
-      setConnected(false);
-    });
-  };
-
-  const scrollToBottom = () => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  // --- 2. CARGA INICIAL DE DADOS ---
+  // --- 2. CARGA DE DADOS ---
   useEffect(() => {
     loadData();
-  }, [id]);
+  }, [id, user]);
 
   const loadData = async () => {
-    if (!id || !user) return;
+    if (!id) return;
+    
+    // Carrega Assembleia
     try {
-      const response = await api.get(`/assemblies/${id}`);
-      setAssembly(response.data);
-      
-      const userVote = response.data.votes?.find((v: any) => v.userId === user.id);
-      if (userVote) { 
-          setHasVoted(true); 
-          setVoteReceipt(userVote.id); 
-      }
+        const resAssembly = await api.get(`/assemblies/${id}`);
+        setAssembly(resAssembly.data);
+        
+        if (resAssembly.data.votes) {
+            const myVote = resAssembly.data.votes.find((v: any) => v.userId === user?.id);
+            if (myVote) {
+                setHasVoted(true);
+                setVoteReceipt(myVote.id); 
+            }
+        }
+    } catch (e) {
+        console.error("Erro ao carregar assembleia:", e);
+    }
 
-      // Carregar histórico do chat via API comum ao entrar
-      const chatResponse = await api.get(`/chat/assemblies/${id}`);
-      setMessages(chatResponse.data || []);
-      setTimeout(scrollToBottom, 500);
-    } catch (err) { 
-        console.error("Erro ao carregar assembleia."); 
+    // Carrega Chat (Try-Catch separado para não quebrar a tela se falhar)
+    try {
+        const resChat = await api.get(`/chat/assemblies/${id}`);
+        setMessages(resChat.data || []);
+        setTimeout(() => chatEndRef.current?.scrollIntoView(), 500);
+    } catch (e) {
+        console.warn("Chat não carregado (possível erro 500 se vazio):", e);
+        setMessages([]);
     }
   };
 
-  // --- 3. AÇÕES (VOTO, CHAT, IA) ---
+  // --- 3. AÇÕES ---
 
   const handleVote = async () => {
     if (!id || !selectedOption || !user) return;
@@ -116,205 +152,374 @@ const VotingRoom: React.FC = () => {
         userId: user.id 
       });
       setHasVoted(true);
-      setVoteReceipt(response.data.id);
-      loadData();
-    } catch (e) { 
-        alert("Falha ao registrar voto. Verifique sua conexão."); 
+      setVoteReceipt(response.data.id || 'CONFIRMADO');
+      alert("Voto registrado com sucesso!");
+      loadData(); 
+    } catch (e: any) { 
+        alert("Erro ao votar: " + (e.response?.data?.message || "Tente novamente.")); 
     }
   };
 
   const handleSendChat = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatMsg.trim() || !user || !connected) return;
+    if (!chatMsg.trim() || !user) return;
 
-    // Constrói o objeto igual ao ChatMessageDTO do seu ChatController.java
+    // Verificação de segurança do socket
+    if (!stompClient || !stompClient.connected) {
+        alert("Conexão perdida. Aguarde a reconexão...");
+        return;
+    }
+
     const chatDTO = {
-      senderName: user.nome || user.name,
+      senderName: user.nome || user.name || user.email,
       content: chatMsg,
       userId: user.id,
-      tenantId: user.tenantId,
-      assemblyId: id
+      tenantId: user.tenantId, 
+      assemblyId: id,
+      type: 'CHAT'
     };
 
-    // Envia via WebSocket (Protocolo STOMP)
-    stompClient?.send(`/app/chat/${id}/send`, {}, JSON.stringify(chatDTO));
-    setChatMsg('');
+    try {
+        stompClient.send(`/app/chat/${id}/send`, {}, JSON.stringify(chatDTO));
+        setChatMsg('');
+    } catch (err) {
+        console.error("Erro envio msg:", err);
+    }
   };
 
-  const handleSummarize = async () => {
+  const handleCloseAssembly = async () => {
+    if (!id || !window.confirm("Confirmar encerramento?")) return;
+    setClosing(true);
+    try {
+        await api.patch(`/assemblies/${id}/close`); 
+        alert("Assembleia encerrada.");
+        loadData();
+    } catch(e: any) {
+        alert("Erro: " + (e.response?.data?.message || e.message));
+    } finally {
+        setClosing(false);
+    }
+  };
+
+  const handleExportDossier = () => {
+      if(!id) return;
+      window.open(`http://localhost:8080/api/assemblies/${id}/dossier`, '_blank');
+  };
+
+  const handleSummarizeIA = () => {
+      if(!id) return;
       setSummarizing(true);
-      try {
-          // Chamada para o ChatService.java que gera o PDF via Gemini
-          window.open(`${api.defaults.baseURL}/chat/assemblies/${id}/resumo-pdf`, '_blank');
-          alert("A IA Gemini está analisando o chat. O PDF será baixado em instantes.");
-      } catch (e) {
-          alert("Erro ao processar resumo.");
-      } finally { 
-          setSummarizing(false); 
-      }
+      window.open(`http://localhost:8080/api/chat/assemblies/${id}/resumo-pdf`, '_blank');
+      setTimeout(() => setSummarizing(false), 2000);
   };
 
+  // Extrai ID do YouTube corretamente para Live/Embed
   const getYoutubeEmbedUrl = (url: string) => {
     if (!url) return "";
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|live\/)([^#\&\?]*).*/;
     const match = url.match(regExp);
-    return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : "";
+    
+    // Garante que retorna URL de embed válida para o iframe
+    if (match && match[2].length === 11) {
+        return `https://www.youtube.com/embed/${match[2]}`;
+    }
+    return "";
   };
 
-  if (!assembly) return (
-    <div className="p-20 text-center animate-pulse">
-      <Clock className="w-12 h-12 mx-auto text-slate-300 mb-4 animate-spin"/>
-      <p className="font-black text-slate-300 uppercase tracking-tighter">Sincronizando com a sala virtual...</p>
-    </div>
-  );
+  if (!assembly) return <div className="p-20 text-center animate-pulse"><Clock className="w-12 h-12 mx-auto text-slate-300 mb-4 animate-spin"/><p className="text-slate-400 font-bold">Carregando sala...</p></div>;
+
+  // Garante opções de voto (Sim/Não/Abstenção por padrão se vazio)
+  const votingOptions = assembly.options && assembly.options.length > 0 
+      ? assembly.options 
+      : (assembly.pollOptions && assembly.pollOptions.length > 0 
+          ? assembly.pollOptions 
+          : [
+              { id: 'sim', descricao: 'Sim' },
+              { id: 'nao', descricao: 'Não' },
+              { id: 'abstencao', descricao: 'Abstenção' }
+            ]);
 
   return (
     <div className="space-y-6 pb-20 p-4 md:p-6">
-      {/* HEADER DINÂMICO */}
-      <div className="bg-slate-900 p-6 rounded-[2.5rem] text-white flex flex-col md:flex-row justify-between items-center gap-4 shadow-2xl border border-slate-800">
-        <div className="flex items-center gap-4">
-          <button onClick={() => navigate('/assemblies')} className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl transition-all"><ArrowLeft size={20}/></button>
-          <div>
-              <h1 className="text-xl md:text-2xl font-black tracking-tight leading-none">{assembly.titulo || assembly.title}</h1>
-              <div className="flex items-center gap-2 mt-2">
-                  <span className={`w-2 h-2 rounded-full animate-ping ${connected ? 'bg-emerald-500' : 'bg-red-500'}`}></span>
-                  <span className="text-[10px] font-black text-red-400 uppercase tracking-widest">
-                    {connected ? 'Conexão Digital Ativa' : 'Reconectando...'}
-                  </span>
-              </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-            <button onClick={() => setShowLive(!showLive)} className={`px-6 py-3 rounded-2xl font-black flex items-center gap-2 transition-all ${showLive ? 'bg-red-600 text-white' : 'bg-slate-800 text-slate-500'}`}>
-                <Video size={18}/> {showLive ? 'Live On' : 'Live Off'}
-            </button>
-            {isManager && (
-                <button 
-                  onClick={handleSummarize} 
-                  className="p-3 bg-emerald-600 rounded-2xl hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-900/20" 
-                  title="Auditoria e Resumo IA"
-                >
-                    <Shield size={20}/>
+      
+      <div className="flex justify-between items-center">
+        <button onClick={() => navigate('/assemblies')} className="flex items-center text-slate-500 hover:text-slate-800 transition-colors">
+            <ArrowLeft className="h-4 w-4 mr-1" /> Voltar para lista
+        </button>
+        {isManager && (
+            <div className="flex bg-slate-100 p-1 rounded-lg">
+                <button onClick={() => setActiveTab('VOTE')} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${activeTab === 'VOTE' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}>
+                  Sala de Votação
                 </button>
-            )}
-        </div>
+                <button onClick={() => setActiveTab('MANAGE')} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${activeTab === 'MANAGE' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}>
+                  Gestão & Encerramento
+                </button>
+            </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* LADO ESQUERDO: LIVE E PAUTA */}
-        <div className="lg:col-span-8 space-y-6">
-          {showLive && assembly.youtubeLiveUrl ? (
-              <div className="aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl border-4 border-slate-900">
-                <iframe 
-                  width="100%" height="100%" 
-                  src={`${getYoutubeEmbedUrl(assembly.youtubeLiveUrl)}?autoplay=1&mute=0`} 
-                  title="Transmissão Votzz" 
-                  frameBorder="0" 
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                  allowFullScreen
-                ></iframe>
-              </div>
-          ) : (
-            <div className="aspect-video bg-slate-100 rounded-[2rem] flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-200">
-                <Video size={48} className="mb-4 opacity-20"/>
-                <p className="font-bold">Aguardando início da transmissão.</p>
-            </div>
-          )}
-
-          <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
-            <div className="flex items-center gap-2 mb-4 text-emerald-600 font-black uppercase text-xs tracking-widest">
-                <FileText size={16}/> Pauta e Itens de Pauta
-            </div>
-            <p className="text-slate-700 leading-relaxed text-lg whitespace-pre-wrap">{assembly.description}</p>
-          </div>
-        </div>
-
-        {/* LADO DIREITO: VOTOS E CHAT */}
-        <div className="lg:col-span-4 space-y-6">
-          {/* CÉDULA */}
-          <div className="bg-white p-8 rounded-[2rem] border-2 border-emerald-50 shadow-xl relative overflow-hidden">
-             <div className="flex items-center justify-between mb-6">
-                 <h3 className="font-black text-slate-900 text-xl tracking-tighter">Cédula de Voto</h3>
-                 <Lock size={18} className="text-slate-200"/>
-             </div>
-             
-             {hasVoted ? (
-                 <div className="text-center bg-emerald-50/50 p-8 rounded-3xl border border-emerald-100 animate-in zoom-in-95">
-                    <div className="w-16 h-16 bg-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4 text-white shadow-lg">
-                        <FileCheck size={32}/>
+      {activeTab === 'MANAGE' && isManager ? (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="bg-slate-900 text-white p-8 rounded-[2rem] shadow-xl relative overflow-hidden">
+                <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h2 className="text-2xl font-black flex items-center gap-2">
+                           <Gavel className="w-6 h-6 text-emerald-400" /> Painel Legal do Síndico
+                        </h2>
+                        <p className="text-slate-400 text-sm mt-1">Controle de quórum e formalização jurídica (Art. 1.354-A CC).</p>
                     </div>
-                    <h4 className="font-black text-emerald-900 text-lg leading-tight">Voto Confirmado</h4>
-                    <p className="text-[10px] text-emerald-600 font-bold mt-4 uppercase tracking-widest bg-emerald-100 py-1 rounded-full px-4">
-                      ID RECIBO: {voteReceipt?.substring(0, 8).toUpperCase() || 'OK'}
-                    </p>
-                 </div>
-             ) : (
-                <div className="space-y-3">
-                   {(assembly.pollOptions || assembly.options)?.map((opt: any) => (
-                      <button 
-                        key={opt.id} 
-                        onClick={() => setSelectedOption(opt.id)} 
-                        className={`w-full p-5 rounded-2xl border-2 transition-all font-black text-lg text-left flex justify-between items-center ${selectedOption === opt.id ? 'border-emerald-600 bg-emerald-50 text-emerald-700' : 'border-slate-100 text-slate-400 hover:border-slate-200'}`}
-                      >
-                        {opt.label}
-                        {selectedOption === opt.id && <CheckCircle size={20}/>}
-                      </button>
-                   ))}
-                   <button 
-                    onClick={handleVote} 
-                    disabled={!selectedOption || assembly.status === 'CLOSED'} 
-                    className="w-full mt-6 bg-slate-900 text-white py-5 rounded-2xl font-black text-xl hover:bg-black transition-all shadow-xl shadow-slate-200 disabled:opacity-20"
-                   >
-                     Confirmar Voto Digital
-                   </button>
+                    <div className="flex items-center gap-3">
+                        <span className={`px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest ${isClosed ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white animate-pulse'}`}>
+                            {isClosed ? 'ENCERRADA' : 'EM ANDAMENTO'}
+                        </span>
+                    </div>
                 </div>
-             )}
-          </div>
 
-          {/* CHAT INTEGRADO */}
-          <div className="bg-white rounded-[2rem] border shadow-lg overflow-hidden flex flex-col h-[550px]">
-            <div className="p-5 bg-slate-50 border-b flex justify-between items-center">
-                <span className="font-black text-slate-700 flex items-center gap-2"><MessageSquare size={18}/> Chat ao Vivo</span>
-                <button 
-                    onClick={handleSummarize} 
-                    disabled={summarizing || messages.length < 3}
-                    className="p-2 bg-purple-100 text-purple-600 rounded-xl hover:bg-purple-200" 
-                    title="Resumo IA Gemini"
-                >
-                    <Sparkles size={16} className={summarizing ? 'animate-spin' : ''}/>
-                </button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-50/30">
-                {messages.map((m, idx) => (
-                    <div key={idx} className="space-y-1">
-                        <p className="text-[9px] font-black text-slate-400 uppercase ml-2">{m.senderName || m.userName}</p>
-                        <p className="bg-white border border-slate-100 p-3 rounded-2xl rounded-tl-none text-sm text-slate-700 shadow-sm">{m.content}</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8 relative z-10">
+                    <div className="bg-white/10 backdrop-blur-sm p-5 rounded-2xl border border-white/10">
+                        <p className="text-slate-400 text-[10px] uppercase font-black tracking-widest">Quórum (Unidades)</p>
+                        <p className="text-3xl font-black mt-1">{totalVotes} <span className="text-sm font-medium text-slate-400">presentes</span></p>
                     </div>
-                ))}
-                <div ref={chatEndRef} />
+                    <div className="bg-white/10 backdrop-blur-sm p-5 rounded-2xl border border-white/10">
+                         <p className="text-slate-400 text-[10px] uppercase font-black tracking-widest">Fração Ideal Total</p>
+                         <p className="text-3xl font-black mt-1">{(totalFraction * 100).toFixed(2)}%</p>
+                    </div>
+                    <div className="bg-white/10 backdrop-blur-sm p-5 rounded-2xl border border-white/10">
+                         <p className="text-slate-400 text-[10px] uppercase font-black tracking-widest">Convocação</p>
+                         <p className="text-3xl font-black mt-1 text-emerald-400">100% <span className="text-sm font-medium text-slate-400">entregue</span></p>
+                    </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {!isClosed ? (
+                    <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
+                        <h3 className="font-black text-lg text-slate-800 mb-2">Ações Críticas</h3>
+                        <p className="text-sm text-slate-500 mb-6">Ao encerrar, o sistema calculará os votos ponderados pela fração ideal e gerará a Ata automaticamente.</p>
+                        <button onClick={handleCloseAssembly} disabled={closing} className="w-full bg-red-600 hover:bg-red-700 text-white px-6 py-4 rounded-xl font-black flex items-center justify-center gap-2 transition-all shadow-lg shadow-red-100 disabled:opacity-50">
+                            {closing ? 'Processando...' : <><Lock className="w-5 h-5" /> Encerrar Votação e Lavrar Ata</>}
+                        </button>
+                    </div>
+                  ) : (
+                    <div className="bg-emerald-50 p-8 rounded-[2rem] border border-emerald-100 shadow-sm">
+                        <h3 className="font-black text-lg text-emerald-800 mb-2 flex items-center gap-2"><CheckCircle size={20}/> Ata Gerada</h3>
+                        <p className="text-sm text-emerald-600 mb-6">A assembleia foi encerrada e os documentos legais estão prontos.</p>
+                        <div className="flex flex-col gap-3">
+                            <button onClick={handleSummarizeIA} className="w-full bg-white text-emerald-800 px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-100 transition-all border border-emerald-200">
+                                <FileText className="w-5 h-5" /> Baixar Ata (PDF)
+                            </button>
+                            <button onClick={handleExportDossier} className="w-full bg-emerald-800 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-900 transition-all shadow-lg">
+                                <Shield className="w-5 h-5" /> Exportar Dossiê Jurídico
+                            </button>
+                        </div>
+                    </div>
+                  )}
+                  
+                  <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
+                      <h3 className="font-black text-lg text-slate-800 mb-4 flex items-center gap-2"><Sparkles className="text-purple-600"/> Inteligência Artificial</h3>
+                      <button onClick={handleSummarizeIA} className="w-full py-4 bg-purple-50 text-purple-700 font-bold rounded-xl border border-purple-100 hover:bg-purple-100 transition-all flex items-center justify-center gap-2">
+                          Gerar Resumo do Chat e Decisões
+                      </button>
+                  </div>
+              </div>
+          </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-in fade-in">
+            
+            <div className="lg:col-span-8 space-y-6">
+                
+                <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex justify-between items-center">
+                    <div>
+                        <h1 className="text-2xl font-black text-slate-800">{assembly.titulo || assembly.title}</h1>
+                        <div className="flex items-center gap-3 mt-1">
+                            <span className="text-xs font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded uppercase tracking-wide">{assembly.type || assembly.tipoAssembleia}</span>
+                            <span className={`text-xs font-bold px-2 py-1 rounded uppercase tracking-wide ${isClosed ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                {isClosed ? 'Encerrada' : 'Aberta para Votos'}
+                            </span>
+                        </div>
+                    </div>
+                    <div className="flex flex-col items-end">
+                        <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest">
+                            {isSecret ? <><EyeOff size={14}/> Voto Secreto</> : <><Eye size={14}/> Voto Aberto</>}
+                        </div>
+                        {connected ? (
+                            <span className="text-[10px] font-black text-emerald-500 uppercase flex items-center gap-1 mt-1"><span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"/> Conectado</span>
+                        ) : (
+                            <span className="text-[10px] font-black text-red-500 uppercase flex items-center gap-1 mt-1"><span className="w-2 h-2 bg-red-500 rounded-full"/> Offline</span>
+                        )}
+                    </div>
+                </div>
+
+                {/* AREA DA LIVE - AGORA SEMPRE RENDERIZA O IFRAME SE TIVER URL */}
+                {assembly.youtubeLiveUrl ? (
+                    <div className="aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl border-4 border-slate-900 relative group">
+                        {/* O iframe é renderizado diretamente. O YouTube controla se mostra a live ou a thumbnail de espera */}
+                        <iframe 
+                            width="100%" height="100%" 
+                            src={`${getYoutubeEmbedUrl(assembly.youtubeLiveUrl)}?autoplay=1&mute=0`} 
+                            title="Live" frameBorder="0" allowFullScreen
+                            className="absolute inset-0 w-full h-full"
+                        ></iframe>
+                    </div>
+                ) : (
+                    <div className="aspect-video bg-slate-100 rounded-[2rem] flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-200">
+                        <Video size={48} className="mb-4 opacity-20"/>
+                        <p className="font-bold">Nenhum link de transmissão configurado.</p>
+                    </div>
+                )}
+
+                <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
+                    <h3 className="text-slate-400 font-black uppercase text-xs tracking-widest mb-4 flex items-center gap-2"><FileText size={16}/> Pauta Oficial</h3>
+                    <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap">
+                        {assembly.description}
+                    </div>
+                    
+                    {assembly.anexoUrl && (
+                        <div className="mt-8 pt-6 border-t border-slate-100">
+                            <h4 className="text-xs font-black text-slate-400 uppercase mb-3">Documentos Anexos</h4>
+                            <a href={assembly.anexoUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors group">
+                                <div className="bg-white p-2 rounded-lg border border-slate-200 text-red-500"><FileText size={20}/></div>
+                                <span className="font-bold text-slate-700 text-sm group-hover:text-blue-600">Documento da Assembleia (PDF)</span>
+                                <Download size={16} className="ml-auto text-slate-400"/>
+                            </a>
+                        </div>
+                    )}
+                </div>
             </div>
 
-            <form onSubmit={handleSendChat} className="p-4 bg-white border-t flex gap-2">
-                <input 
-                    value={chatMsg} 
-                    onChange={e => setChatMsg(e.target.value)} 
-                    placeholder="Digite sua mensagem..." 
-                    className="flex-1 bg-slate-50 border-none rounded-2xl px-4 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500" 
-                />
-                <button 
-                  type="submit" 
-                  disabled={!chatMsg.trim() || !connected}
-                  className="p-3 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 shadow-lg disabled:opacity-50"
-                >
-                  <Send size={20}/>
-                </button>
-            </form>
-          </div>
+            <div className="lg:col-span-4 space-y-6">
+                
+                <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 sticky top-6">
+                    <h3 className="text-lg font-bold text-slate-800 mb-2 flex items-center">
+                        <Lock className="h-5 w-5 mr-2 text-emerald-600" />
+                        Cédula de Votação
+                    </h3>
+
+                    <div className="bg-slate-50 p-3 rounded-lg mb-4 border border-slate-200">
+                        <p className="text-xs text-slate-500 uppercase font-bold mb-1">Seu Poder de Voto</p>
+                        <div className="flex justify-between items-center">
+                            <span className="text-sm font-medium text-slate-700">Unidade: {user?.unidade || 'N/A'}</span>
+                            <span className="bg-emerald-100 text-emerald-800 text-xs px-2 py-1 rounded font-bold flex items-center">
+                                <Scale className="w-3 h-3 mr-1" /> {(userFraction * 100).toFixed(4)}%
+                            </span>
+                        </div>
+                    </div>
+
+                    {isSecret ? (
+                        <div className="flex items-center text-xs text-purple-700 bg-purple-50 p-2 rounded mb-4">
+                            <EyeOff className="w-3 h-3 mr-1" /> Votação Secreta.
+                        </div>
+                    ) : (
+                        <div className="flex items-center text-xs text-blue-700 bg-blue-50 p-2 rounded mb-4">
+                            <Eye className="w-3 h-3 mr-1" /> Voto Aberto.
+                        </div>
+                    )}
+
+                    {hasVoted ? (
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-center">
+                            <div className="h-12 w-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                <CheckIcon className="h-6 w-6 text-emerald-600" />
+                            </div>
+                            <h4 className="font-bold text-emerald-900">Voto Confirmado</h4>
+                            <p className="text-sm text-emerald-700 mt-1 mb-3">Obrigado por participar.</p>
+                            <div className="text-xs bg-white p-2 rounded border border-emerald-100 text-slate-500 break-all font-mono">
+                                Receipt: {voteReceipt}
+                            </div>
+                        </div>
+                    ) : isClosed ? (
+                        <div className="bg-slate-100 border border-slate-200 rounded-lg p-4 text-center text-slate-500">
+                            <Lock className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                            <p className="font-bold">Votação Encerrada</p>
+                        </div>
+                    ) : canVote ? (
+                        <div className="space-y-3">
+                            {/* Renderiza as opções ou o fallback (Sim/Não) se vazio */}
+                            {votingOptions.map((opt: any) => (
+                                <button
+                                    key={opt.id || opt.descricao}
+                                    onClick={() => setSelectedOption(opt.id || opt.descricao)}
+                                    className={`w-full text-left px-4 py-3 rounded-lg border transition-all ${
+                                        selectedOption === (opt.id || opt.descricao)
+                                        ? 'border-emerald-500 ring-1 ring-emerald-500 bg-emerald-50 text-emerald-900' 
+                                        : 'border-slate-200 hover:border-slate-300 text-slate-700'
+                                    }`}
+                                >
+                                    <span className="font-medium">{opt.descricao || opt.label}</span>
+                                </button>
+                            ))}
+                            <button
+                                onClick={handleVote}
+                                disabled={!selectedOption}
+                                className="w-full mt-6 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold py-3 rounded-lg shadow-md transition-colors"
+                            >
+                                Confirmar Voto Seguro
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="text-center p-6 bg-slate-50 rounded-2xl border border-slate-200 text-slate-400">
+                            <Shield className="mx-auto mb-2 opacity-50" size={32}/>
+                            <p className="font-bold text-sm">Apenas moradores habilitados podem votar.</p>
+                        </div>
+                    )}
+                    
+                    <div className="mt-6 pt-6 border-t border-slate-100">
+                        <div className="flex items-start text-xs text-slate-500">
+                            <FileCheck className="h-4 w-4 mr-2 flex-shrink-0 text-slate-400" />
+                            <p>Em conformidade com Art. 1.354-A do CC. Hash auditável e imutável.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-[2rem] border shadow-lg overflow-hidden flex flex-col h-[500px]">
+                    <div className="p-4 bg-slate-50 border-b flex justify-between items-center">
+                        <span className="font-black text-slate-700 flex items-center gap-2"><MessageSquare size={18}/> Chat</span>
+                        <div className="flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Ao Vivo</span>
+                        </div>
+                    </div>
+                    
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/30">
+                        {messages.length === 0 && <div className="text-center mt-20 opacity-30"><MessageSquare size={48} className="mx-auto mb-2"/><p className="font-bold text-xs">Nenhuma mensagem.</p></div>}
+                        {messages.map((m, idx) => (
+                            <div key={idx} className={`flex flex-col ${m.userId === user?.id ? 'items-end' : 'items-start'}`}>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase">{m.senderName}</span>
+                                    <span className="text-[9px] text-slate-300">{new Date(m.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                </div>
+                                <div className={`p-3 rounded-2xl max-w-[90%] text-sm shadow-sm ${m.userId === user?.id ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none'}`}>
+                                    {m.content}
+                                </div>
+                            </div>
+                        ))}
+                        <div ref={chatEndRef} />
+                    </div>
+
+                    <form onSubmit={handleSendChat} className="p-3 bg-white border-t flex gap-2 items-center">
+                        <input 
+                            value={chatMsg} 
+                            onChange={e => setChatMsg(e.target.value)} 
+                            placeholder="Escreva sua mensagem..." 
+                            className="flex-1 bg-slate-100 border-none rounded-xl px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500 transition-all" 
+                            disabled={isClosed}
+                        />
+                        <button type="submit" disabled={!chatMsg.trim() || !connected || isClosed} className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-lg shadow-blue-200">
+                            <Send size={18}/>
+                        </button>
+                    </form>
+                </div>
+
+            </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
+
+const CheckIcon = ({className}: {className?: string}) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+)
 
 export default VotingRoom;

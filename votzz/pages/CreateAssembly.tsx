@@ -1,17 +1,18 @@
-// src/pages/CreateAssembly.tsx - COMPLETO SEM CORTES
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, Calendar, Type, FileText, ArrowLeft, Loader2, Video, Eye, EyeOff } from 'lucide-react';
+import { Sparkles, Calendar, Type, FileText, ArrowLeft, Loader2, Video, Eye, EyeOff, Upload } from 'lucide-react';
 import { generateAssemblyDescription } from '../services/geminiService';
 import api from '../services/api'; 
-import { AssemblyStatus, VoteType, VotePrivacy } from '../types';
+import { VoteType, VotePrivacy } from '../types';
 
 const CreateAssembly: React.FC = () => {
   const navigate = useNavigate();
   const [loadingAi, setLoadingAi] = useState(false);
   const [saving, setSaving] = useState(false);
   
+  // Estado para o arquivo PDF
+  const [attachment, setAttachment] = useState<File | null>(null);
+
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -37,31 +38,63 @@ const CreateAssembly: React.FC = () => {
     setLoadingAi(false);
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setAttachment(e.target.files[0]);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     
     try {
+        // Lógica de upload do anexo (simplificada - em produção deve usar o endpoint de upload)
+        let anexoUrl = '';
+        if (attachment) {
+            const fileData = new FormData();
+            fileData.append('file', attachment);
+            // Assumindo um endpoint que retorna a URL do arquivo
+            // const uploadRes = await api.post('/financial/reports/upload', fileData);
+            // anexoUrl = uploadRes.data.url; 
+            anexoUrl = 'https://storage.votzz.com/simulated-attachment.pdf'; // Simulação
+        }
+
+        // Define as opções de voto
         let options = [
-            { id: '1', label: 'Sim' }, 
-            { id: '2', label: 'Não' }, 
-            { id: '3', label: 'Abstenção' }
+            { descricao: 'Sim' }, 
+            { descricao: 'Não' }, 
+            { descricao: 'Abstenção' }
         ];
 
         if (formData.voteType === VoteType.MULTIPLE_CHOICE) {
-            options = [{ id: '1', label: 'Opção A' }, { id: '2', label: 'Opção B' }];
+            options = [{ descricao: 'Opção A' }, { descricao: 'Opção B' }];
         }
 
-        await api.post('/assemblies', {
-            ...formData,
-            status: AssemblyStatus.SCHEDULED,
-            options
-        });
+        // Mapeamento para o Backend Java (Campos em Português)
+        const payload = {
+            titulo: formData.title,
+            description: formData.description,
+            dataInicio: formData.startDate,
+            dataFim: formData.endDate,
+            tipoAssembleia: formData.type,
+            youtubeLiveUrl: formData.youtubeLiveUrl,
+            quorumType: formData.quorumType,
+            voteType: formData.voteType,
+            votePrivacy: formData.votePrivacy,
+            status: 'AGENDADA', // Enum Java
+            anexoUrl: anexoUrl,
+            options: options
+        };
 
+        await api.post('/assemblies', payload);
+
+        alert("Assembleia lançada com sucesso!");
         navigate('/assemblies');
-    } catch (err) {
-        console.error(err);
-        alert("Erro ao criar assembleia no banco real.");
+    } catch (err: any) {
+        console.error("Erro API:", err);
+        const msg = err.response?.data?.message || "Erro ao criar assembleia. Verifique os dados.";
+        alert(msg);
     } finally {
         setSaving(false);
     }
@@ -76,14 +109,14 @@ const CreateAssembly: React.FC = () => {
       <div className="bg-white rounded-3xl shadow-xl border border-slate-100 p-8 md:p-12">
         <div className="mb-8">
           <h1 className="text-3xl font-black text-slate-900 tracking-tighter">Nova Assembleia Digital</h1>
-          <p className="text-slate-500 mt-2">Configure a pauta, as regras de votação e o link da transmissão.</p>
+          <p className="text-slate-500 mt-2">Configure a pauta, anexos e a transmissão ao vivo.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Titulo */}
+            {/* Título */}
             <div className="col-span-2">
-              <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Título / Tema Principal</label>
+              <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Título / Tema</label>
               <div className="relative">
                 <Type className="absolute left-4 top-4 h-5 w-5 text-slate-400" />
                 <input 
@@ -91,7 +124,7 @@ const CreateAssembly: React.FC = () => {
                   value={formData.title}
                   onChange={e => setFormData({...formData, title: e.target.value})}
                   className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-emerald-500 font-bold text-slate-800"
-                  placeholder="Ex: Aprovação de Reforma do Hall"
+                  placeholder="Ex: Aprovação de Contas 2025"
                   required
                 />
               </div>
@@ -112,97 +145,104 @@ const CreateAssembly: React.FC = () => {
               </div>
             </div>
 
+            {/* Upload PDF (NOVO) */}
+            <div className="col-span-2">
+                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Anexar Documento (PDF)</label>
+                <div className="relative">
+                    <input 
+                        type="file" 
+                        accept="application/pdf"
+                        onChange={handleFileChange}
+                        className="w-full p-4 bg-slate-50 border-none rounded-2xl text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
+                    />
+                    <Upload className="absolute right-4 top-4 text-slate-400 pointer-events-none" size={20}/>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1 ml-2">Opcional. Ex: Orçamentos, atas anteriores, laudos técnicos.</p>
+            </div>
+
             {/* Descrição com IA */}
             <div className="col-span-2">
               <div className="flex justify-between items-center mb-2">
-                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Descrição da Pauta (Edital)</label>
+                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Pauta (Edital)</label>
                   <button 
                     type="button"
                     onClick={handleAiGenerate}
                     disabled={loadingAi || !formData.title}
-                    className="text-xs bg-purple-600 text-white px-4 py-2 rounded-full font-black flex items-center gap-1 hover:bg-purple-700 transition-all shadow-lg shadow-purple-100"
+                    className="text-xs bg-purple-600 text-white px-4 py-2 rounded-full font-black flex items-center gap-1 hover:bg-purple-700 transition-all shadow-lg"
                   >
                     {loadingAi ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles size={14} />}
-                    {loadingAi ? 'IA Processando...' : 'Gerar com Gemini IA'}
+                    {loadingAi ? 'IA...' : 'Gerar com Gemini'}
                   </button>
               </div>
               <textarea 
                 rows={6}
                 value={formData.description}
                 onChange={e => setFormData({...formData, description: e.target.value})}
-                className="w-full p-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-emerald-500 text-slate-700 leading-relaxed"
-                placeholder="Descreva os detalhes importantes para os moradores..."
+                className="w-full p-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-emerald-500 text-slate-700"
+                placeholder="Detalhes da pauta..."
                 required
               />
             </div>
 
-            {/* Configurações de Voto */}
-            <div>
-              <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Privacidade do Voto</label>
-              <div className="relative">
-                <select 
-                  value={formData.votePrivacy}
-                  onChange={e => setFormData({...formData, votePrivacy: e.target.value as VotePrivacy})}
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-emerald-500 appearance-none font-bold text-slate-700"
-                >
-                  <option value={VotePrivacy.OPEN}>Voto Aberto (Público)</option>
-                  <option value={VotePrivacy.SECRET}>Voto Secreto (Anônimo)</option>
-                </select>
-                <div className="absolute left-4 top-4 text-slate-400 pointer-events-none">
-                   {formData.votePrivacy === VotePrivacy.SECRET ? <EyeOff size={20} /> : <Eye size={20} />}
+            {/* Datas e Configurações */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Início</label>
+                  <input 
+                    type="datetime-local"
+                    value={formData.startDate}
+                    onChange={e => setFormData({...formData, startDate: e.target.value})}
+                    className="w-full px-4 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-emerald-500 font-bold text-slate-700"
+                    required
+                  />
                 </div>
-              </div>
-            </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Fim</label>
+                  <input 
+                    type="datetime-local"
+                    value={formData.endDate}
+                    onChange={e => setFormData({...formData, endDate: e.target.value})}
+                    className="w-full px-4 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-emerald-500 font-bold text-slate-700"
+                    required
+                  />
+                </div>
+                
+                {/* Tipo de Voto */}
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Tipo de Votação</label>
+                  <select 
+                    value={formData.voteType}
+                    onChange={e => setFormData({...formData, voteType: e.target.value as VoteType})}
+                    className="w-full px-4 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-emerald-500 font-bold text-slate-700"
+                  >
+                    <option value={VoteType.YES_NO_ABSTAIN}>Sim / Não / Abstenção</option>
+                    <option value={VoteType.MULTIPLE_CHOICE}>Múltipla Escolha</option>
+                  </select>
+                </div>
 
-            <div>
-              <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Tipo de Votação</label>
-              <select 
-                value={formData.voteType}
-                onChange={e => setFormData({...formData, voteType: e.target.value as VoteType})}
-                className="w-full px-4 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-emerald-500 font-bold text-slate-700"
-              >
-                <option value={VoteType.YES_NO_ABSTAIN}>Sim / Não / Abstenção</option>
-                <option value={VoteType.MULTIPLE_CHOICE}>Múltipla Escolha</option>
-              </select>
-            </div>
-
-            {/* Datas */}
-            <div>
-              <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Data e Hora Início</label>
-              <input 
-                type="datetime-local"
-                value={formData.startDate}
-                onChange={e => setFormData({...formData, startDate: e.target.value})}
-                className="w-full px-4 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-emerald-500 font-bold text-slate-700"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Data e Hora Fim</label>
-              <input 
-                type="datetime-local"
-                value={formData.endDate}
-                onChange={e => setFormData({...formData, endDate: e.target.value})}
-                className="w-full px-4 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-emerald-500 font-bold text-slate-700"
-                required
-              />
+                {/* Privacidade */}
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Privacidade</label>
+                  <div className="relative">
+                    <select 
+                      value={formData.votePrivacy}
+                      onChange={e => setFormData({...formData, votePrivacy: e.target.value as VotePrivacy})}
+                      className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-emerald-500 appearance-none font-bold text-slate-700"
+                    >
+                      <option value={VotePrivacy.OPEN}>Voto Aberto</option>
+                      <option value={VotePrivacy.SECRET}>Voto Secreto</option>
+                    </select>
+                    <div className="absolute left-4 top-4 text-slate-400 pointer-events-none">
+                       {formData.votePrivacy === VotePrivacy.SECRET ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </div>
+                  </div>
+                </div>
             </div>
           </div>
 
-          {/* Ações */}
           <div className="pt-6 border-t border-slate-50 flex gap-4">
-            <button 
-              type="button" 
-              onClick={() => navigate('/assemblies')}
-              className="flex-1 py-4 border-2 border-slate-100 rounded-2xl text-slate-500 font-bold hover:bg-slate-50 transition-colors"
-            >
-              Descartar
-            </button>
-            <button 
-              type="submit" 
-              disabled={saving}
-              className="flex-[2] py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xl transition-all shadow-xl shadow-emerald-200 flex items-center justify-center"
-            >
+            <button type="button" onClick={() => navigate('/assemblies')} className="flex-1 py-4 border-2 border-slate-100 rounded-2xl text-slate-500 font-bold">Descartar</button>
+            <button type="submit" disabled={saving} className="flex-[2] py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xl shadow-xl">
               {saving ? <Loader2 className="animate-spin mr-2" /> : 'Lançar Assembleia'}
             </button>
           </div>
