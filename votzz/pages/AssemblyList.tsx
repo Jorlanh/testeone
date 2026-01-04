@@ -18,13 +18,20 @@ const AssemblyList: React.FC = () => {
   const loadAssemblies = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/assemblies');
-      // Garante que res.data seja um array antes de setar o estado
-      setAssemblies(Array.isArray(res.data) ? res.data : []);
       setError(null);
+      
+      const res = await api.get('/assemblies');
+      
+      // Garante que res.data seja um array antes de setar o estado
+      const data = Array.isArray(res.data) ? res.data : [];
+      setAssemblies(data);
+      
     } catch (err: any) {
-      console.error("Erro ao carregar assembleias:", err);
-      setError("Erro ao carregar a lista. Verifique sua conexão e vínculo com o condomínio.");
+      console.error("Erro detalhado ao carregar assembleias:", err.response?.data || err.message);
+      
+      // Captura a mensagem de erro vinda do ResponseEntity.badRequest() do Java
+      const backendMessage = err.response?.data?.error || err.response?.data;
+      setError(typeof backendMessage === 'string' ? backendMessage : "Erro ao carregar a lista. Verifique seu vínculo com o condomínio.");
     } finally {
       setLoading(false);
     }
@@ -65,52 +72,58 @@ const AssemblyList: React.FC = () => {
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl flex items-center gap-3">
           <AlertCircle size={20} />
-          {error}
+          <div className="flex flex-col">
+            <span className="font-bold">Atenção</span>
+            <span className="text-sm">{error}</span>
+          </div>
         </div>
       )}
 
       <div className="grid gap-4">
-        {assemblies.length > 0 ? assemblies.map((assembly) => (
-          <div key={assembly.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="flex-1">
-                <div className="flex items-center space-x-3 mb-2">
-                  <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${getStatusColor(assembly.status)}`}>
-                    {assembly.status}
-                  </span>
-                  <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Assembleia Digital</span>
-                </div>
-                <h3 className="text-lg font-bold text-slate-800 mb-1">{assembly.titulo || assembly.title}</h3>
-                <p className="text-slate-600 text-sm line-clamp-2 mb-4">{assembly.description}</p>
-                
-                <div className="flex items-center space-x-6 text-sm text-slate-500">
-                  <div className="flex items-center space-x-1.5">
-                    <Calendar className="h-4 w-4 text-emerald-500" />
-                    <span className="font-medium">
-                        {assembly.dataInicio || assembly.startDate 
-                            ? new Date(assembly.dataInicio || assembly.startDate!).toLocaleDateString() 
-                            : 'Data a definir'}
+        {assemblies.length > 0 ? assemblies.map((assembly) => {
+          // Normalização da data para aceitar ambos os campos do Java
+          const rawDate = assembly.dataInicio || assembly.startDate;
+          
+          return (
+            <div key={assembly.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center space-x-3 mb-2">
+                    <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${getStatusColor(assembly.status)}`}>
+                      {assembly.status}
                     </span>
+                    <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Assembleia Digital</span>
                   </div>
-                  <div className="flex items-center space-x-1.5">
-                    <Users className="h-4 w-4 text-blue-500" />
-                    <span className="font-medium">{assembly.votes?.length || 0} Votos</span>
+                  <h3 className="text-lg font-bold text-slate-800 mb-1">{assembly.titulo || assembly.title}</h3>
+                  <p className="text-slate-600 text-sm line-clamp-2 mb-4">{assembly.description}</p>
+                  
+                  <div className="flex items-center space-x-6 text-sm text-slate-500">
+                    <div className="flex items-center space-x-1.5">
+                      <Calendar className="h-4 w-4 text-emerald-500" />
+                      <span className="font-medium">
+                          {rawDate ? new Date(rawDate).toLocaleDateString('pt-BR') : 'Data a definir'}
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-1.5">
+                      <Users className="h-4 w-4 text-blue-500" />
+                      <span className="font-medium">{assembly.votes?.length || 0} Votos</span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div>
-                <Link 
-                  to={`/voting-room/${assembly.id}`}
-                  className="inline-flex items-center justify-center px-6 py-3 border border-slate-200 shadow-sm text-sm font-bold rounded-xl text-slate-700 bg-white hover:bg-slate-50 w-full md:w-auto transition-all hover:border-emerald-500 hover:text-emerald-600"
-                >
-                  {(user?.role === 'MANAGER' || user?.role === 'SINDICO' || user?.role === 'ADMIN') ? 'Gerenciar' : 'Votar'}
-                  <ChevronRight className="ml-2 h-4 w-4" />
-                </Link>
+                <div>
+                  <Link 
+                    to={`/voting-room/${assembly.id}`}
+                    className="inline-flex items-center justify-center px-6 py-3 border border-slate-200 shadow-sm text-sm font-bold rounded-xl text-slate-700 bg-white hover:bg-slate-50 w-full md:w-auto transition-all hover:border-emerald-500 hover:text-emerald-600"
+                  >
+                    {(user?.role === 'MANAGER' || user?.role === 'SINDICO' || user?.role === 'ADMIN') ? 'Gerenciar' : 'Votar'}
+                    <ChevronRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </div>
               </div>
             </div>
-          </div>
-        )) : !loading && !error && (
+          );
+        }) : !loading && !error && (
           <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300">
             <p className="text-slate-500 font-medium">Nenhuma assembleia encontrada.</p>
           </div>
