@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  CalendarDays, MapPin, Users, Clock, Plus, CheckCircle, XCircle, AlertCircle, Wallet, Edit, Save, Trash2, Search, User as UserIcon
+  CalendarDays, MapPin, Users, Clock, Plus, CheckCircle, XCircle, AlertCircle, Wallet, Edit, Save, Trash2, Search, User as UserIcon, Upload, ImageIcon, Shield, ArrowRight
 } from 'lucide-react';
 import api from '../services/api'; 
 import { CommonArea, Booking, User, BookingStatus } from '../types';
@@ -37,12 +37,12 @@ const Spaces: React.FC<SpacesProps> = () => {
   const [areaForm, setAreaForm] = useState<Partial<CommonArea>>({
     name: '', capacity: 0, price: 0, description: '', rules: '', openTime: '08:00', closeTime: '22:00', imageUrl: ''
   });
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     loadData();
   }, []);
 
-  // Preenche dados do usuário automaticamente ao abrir o modal
   useEffect(() => {
     if (user && selectedArea) {
       setBookingForm(prev => ({
@@ -71,7 +71,6 @@ const Spaces: React.FC<SpacesProps> = () => {
 
   // --- LÓGICA DE VALIDAÇÃO ---
   const isDateBlocked = (areaId: string, date: string) => {
-    // Verifica se já existe reserva CONFIRMADA ou PENDENTE para esta área nesta data
     return bookings.some(b => 
       b.areaId === areaId && 
       b.date === date && 
@@ -92,10 +91,34 @@ const Spaces: React.FC<SpacesProps> = () => {
       return "Esta data já está reservada por outro morador. Por favor, escolha outro dia.";
     }
 
-    return null; // Sem erros
+    return null;
   };
 
   // --- ACTIONS ---
+
+  // NOVO: Função para Upload de Imagem (CORRIGIDA)
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      // CORREÇÃO: Removido o header manual. Axios cuida do boundary.
+      const response = await api.post('/facilities/areas/upload', formData);
+      
+      setAreaForm(prev => ({ ...prev, imageUrl: response.data.url }));
+      setSuccessMsg("Imagem carregada com sucesso!");
+    } catch (error: any) {
+      console.error(error);
+      const msg = error.response?.data?.error || "Erro ao fazer upload da imagem.";
+      setErrorMsg(msg);
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const handleCreateBooking = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,7 +132,8 @@ const Spaces: React.FC<SpacesProps> = () => {
       return;
     }
 
-    const confirmMsg = `Confirmar Reserva: ${selectedArea.name}\nValor: R$ ${selectedArea.price.toFixed(2)}\nData: ${new Date(bookingForm.date).toLocaleDateString()}\n\nAo confirmar, você será redirecionado para o pagamento Asaas (Pix/Boleto). A reserva só será efetivada após a compensação.`;
+    const price = selectedArea.price ?? 0;
+    const confirmMsg = `Confirmar Reserva: ${selectedArea.name}\nValor: R$ ${price.toFixed(2)}\nData: ${new Date(bookingForm.date).toLocaleDateString()}\n\nAo confirmar, você será redirecionado para o pagamento Asaas (Pix/Boleto). A reserva só será efetivada após a compensação.`;
     
     if(!window.confirm(confirmMsg)) return;
 
@@ -117,14 +141,14 @@ const Spaces: React.FC<SpacesProps> = () => {
       await api.post('/facilities/bookings', {
         areaId: selectedArea.id,
         userId: user.id,
-        ...bookingForm, // Envia nome, cpf, bloco, unidade, data, horas
+        ...bookingForm,
         billingType: 'PIX' 
       });
       
       setSuccessMsg("Solicitação enviada! Aguardando confirmação do pagamento pelo Asaas.");
       loadData();
-      setSelectedArea(null); // Fecha o form
-      setActiveTab('my-bookings'); // Leva para a lista
+      setSelectedArea(null);
+      setActiveTab('my-bookings');
     } catch (e: any) {
       setErrorMsg(e.response?.data?.message || "Erro ao processar reserva. Tente novamente.");
     }
@@ -209,7 +233,7 @@ const Spaces: React.FC<SpacesProps> = () => {
                     <div className="w-full h-full flex items-center justify-center text-slate-400"><CalendarDays size={48}/></div>
                   )}
                   <div className="absolute top-3 right-3 bg-slate-900/90 backdrop-blur px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm">
-                    {area.price > 0 ? `R$ ${area.price.toFixed(2)}` : 'Grátis'}
+                    {area.price && area.price > 0 ? `R$ ${Number(area.price).toFixed(2)}` : 'Grátis'}
                   </div>
                 </div>
                 <div className="p-5">
@@ -238,16 +262,16 @@ const Spaces: React.FC<SpacesProps> = () => {
                     </div>
 
                     <div className="space-y-4">
-                       <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-xs text-blue-800">
+                        <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-xs text-blue-800">
                           <p className="font-bold mb-1">Regras Importantes:</p>
                           <ul className="list-disc list-inside space-y-1">
                               <li>Horário permitido: 08h às 22h.</li>
                               <li>Pagamento via Asaas (Pix/Boleto).</li>
                               <li>Não é permitido agendar data retroativa.</li>
                           </ul>
-                       </div>
+                        </div>
 
-                       <div>
+                        <div>
                           <label className="text-xs font-bold text-slate-700 uppercase">Data Desejada</label>
                           <input 
                             type="date" 
@@ -257,9 +281,9 @@ const Spaces: React.FC<SpacesProps> = () => {
                             onChange={e => setBookingForm({...bookingForm, date: e.target.value})} 
                             className="w-full p-2.5 mt-1 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none" 
                           />
-                       </div>
+                        </div>
 
-                       <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-2 gap-3">
                           <div>
                               <label className="text-xs font-bold text-slate-700 uppercase">Início</label>
                               <input type="time" required min="08:00" max="22:00" value={bookingForm.startTime} onChange={e => setBookingForm({...bookingForm, startTime: e.target.value})} className="w-full p-2.5 mt-1 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none" />
@@ -268,23 +292,23 @@ const Spaces: React.FC<SpacesProps> = () => {
                               <label className="text-xs font-bold text-slate-700 uppercase">Fim</label>
                               <input type="time" required min="08:00" max="22:00" value={bookingForm.endTime} onChange={e => setBookingForm({...bookingForm, endTime: e.target.value})} className="w-full p-2.5 mt-1 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none" />
                           </div>
-                       </div>
+                        </div>
 
-                       <div className="pt-4 border-t border-slate-100">
-                           <p className="text-xs font-bold text-slate-400 uppercase mb-2">Dados do Responsável</p>
-                           <input type="text" placeholder="Nome Completo" required value={bookingForm.nome} onChange={e => setBookingForm({...bookingForm, nome: e.target.value})} className="w-full p-2.5 mb-2 border border-slate-300 rounded-lg text-sm" />
-                           <div className="grid grid-cols-2 gap-2">
-                               <input type="text" placeholder="CPF" required value={bookingForm.cpf} onChange={e => setBookingForm({...bookingForm, cpf: e.target.value})} className="w-full p-2.5 border border-slate-300 rounded-lg text-sm" />
-                               <div className="flex gap-2">
-                                   <input type="text" placeholder="Bl" required value={bookingForm.bloco} onChange={e => setBookingForm({...bookingForm, bloco: e.target.value})} className="w-full p-2.5 border border-slate-300 rounded-lg text-sm" />
-                                   <input type="text" placeholder="Apt" required value={bookingForm.unidade} onChange={e => setBookingForm({...bookingForm, unidade: e.target.value})} className="w-full p-2.5 border border-slate-300 rounded-lg text-sm" />
-                               </div>
-                           </div>
-                       </div>
+                        <div className="pt-4 border-t border-slate-100">
+                            <p className="text-xs font-bold text-slate-400 uppercase mb-2">Dados do Responsável</p>
+                            <input type="text" placeholder="Nome Completo" required value={bookingForm.nome} onChange={e => setBookingForm({...bookingForm, nome: e.target.value})} className="w-full p-2.5 mb-2 border border-slate-300 rounded-lg text-sm" />
+                            <div className="grid grid-cols-2 gap-2">
+                                <input type="text" placeholder="CPF" required value={bookingForm.cpf} onChange={e => setBookingForm({...bookingForm, cpf: e.target.value})} className="w-full p-2.5 border border-slate-300 rounded-lg text-sm" />
+                                <div className="flex gap-2">
+                                    <input type="text" placeholder="Bl" required value={bookingForm.bloco} onChange={e => setBookingForm({...bookingForm, bloco: e.target.value})} className="w-full p-2.5 border border-slate-300 rounded-lg text-sm" />
+                                    <input type="text" placeholder="Apt" required value={bookingForm.unidade} onChange={e => setBookingForm({...bookingForm, unidade: e.target.value})} className="w-full p-2.5 border border-slate-300 rounded-lg text-sm" />
+                                </div>
+                            </div>
+                        </div>
 
-                       <button type="submit" className="w-full bg-emerald-600 text-white py-3.5 rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 mt-4">
-                           <Wallet size={18}/> Ir para Pagamento
-                       </button>
+                        <button type="submit" className="w-full bg-emerald-600 text-white py-3.5 rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 mt-4">
+                            <Wallet size={18}/> Ir para Pagamento
+                        </button>
                     </div>
                   </form>
                 ) : (
@@ -317,9 +341,37 @@ const Spaces: React.FC<SpacesProps> = () => {
                   <input type="text" placeholder="Nome da Área (Ex: Salão de Festas)" value={areaForm.name} onChange={e => setAreaForm({...areaForm, name: e.target.value})} className="p-3 border rounded-lg" required />
                   <input type="number" placeholder="Capacidade Máxima" value={areaForm.capacity || ''} onChange={e => setAreaForm({...areaForm, capacity: Number(e.target.value)})} className="p-3 border rounded-lg" required />
                   <input type="number" step="0.01" placeholder="Valor da Reserva (R$)" value={areaForm.price || ''} onChange={e => setAreaForm({...areaForm, price: Number(e.target.value)})} className="p-3 border rounded-lg" required />
-                  <input type="text" placeholder="URL da Imagem (https://...)" value={areaForm.imageUrl} onChange={e => setAreaForm({...areaForm, imageUrl: e.target.value})} className="p-3 border rounded-lg" />
+                  
+                  {/* SELEÇÃO DE IMAGEM (UPLOAD OU LINK) */}
+                  <div className="md:col-span-2 space-y-3 p-4 bg-white rounded-lg border border-slate-200">
+                      <p className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2"><ImageIcon size={14}/> Foto da Área</p>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                              <label className="text-xs text-slate-400 mb-1 block">Opção A: Link Externo (Google Drive, etc)</label>
+                              <input type="text" placeholder="https://..." value={areaForm.imageUrl} onChange={e => setAreaForm({...areaForm, imageUrl: e.target.value})} className="p-3 border rounded-lg w-full text-sm" />
+                          </div>
+                          
+                          <div>
+                              <label className="text-xs text-slate-400 mb-1 block">Opção B: Upload de Arquivo</label>
+                              <div className="relative">
+                                  <input type="file" onChange={handleImageUpload} accept="image/*" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                  <div className={`p-3 border border-dashed rounded-lg w-full text-sm flex items-center justify-center gap-2 ${isUploading ? 'bg-slate-100 text-slate-400' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}>
+                                      {isUploading ? 'Enviando...' : <><Upload size={16}/> Escolher Arquivo</>}
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
+                      {areaForm.imageUrl && (
+                          <div className="mt-2 text-xs text-green-600 font-bold flex items-center gap-1">
+                              <CheckCircle size={12}/> Imagem definida!
+                          </div>
+                      )}
+                  </div>
+
                   <textarea placeholder="Descrição e Regras de Uso" rows={3} value={areaForm.description} onChange={e => setAreaForm({...areaForm, description: e.target.value})} className="p-3 border rounded-lg md:col-span-2" />
-                  <button type="submit" className="bg-emerald-600 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 md:col-span-2 hover:bg-emerald-700 shadow">
+                  
+                  <button type="submit" disabled={isUploading} className="bg-emerald-600 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 md:col-span-2 hover:bg-emerald-700 shadow disabled:opacity-50">
                     <Save size={18}/> Salvar Área
                   </button>
                 </form>
@@ -334,7 +386,7 @@ const Spaces: React.FC<SpacesProps> = () => {
                         </div>
                         <div>
                             <p className="font-bold text-slate-800">{area.name}</p>
-                            <p className="text-xs text-emerald-600 font-bold">R$ {area.price.toFixed(2)}</p>
+                            <p className="text-xs text-emerald-600 font-bold">R$ {Number(area.price).toFixed(2)}</p>
                         </div>
                     </div>
                     <div className="flex gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
@@ -366,7 +418,6 @@ const Spaces: React.FC<SpacesProps> = () => {
                  <tbody className="divide-y divide-slate-100">
                    {bookings.map(booking => {
                        const areaName = areas.find(a => a.id === booking.areaId)?.name || 'Área Excluída';
-                       // Tenta pegar dados do booking (se salvos) ou busca do user (se tiver join no backend, idealmente o booking objeto já traz esses dados)
                        const moradorNome = (booking as any).nome || 'Morador'; 
                        const moradorUnidade = (booking as any).unit || (booking as any).unidade || '?';
 

@@ -11,11 +11,11 @@ import { Assembly, User } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { SubscriptionStatus } from '../components/SubscriptionStatus';
 
-// Tipos auxiliares locais
+// --- TIPAGEM CORRIGIDA PARA BATER COM O JAVA ---
 interface AuditLog {
   id: string;
   action: string;
-  user: string;
+  userName: string; // O Backend envia "userName", não "user"
   details: string;
   timestamp: string;
 }
@@ -41,7 +41,6 @@ const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  // Estados de Dados
   const [assemblies, setAssemblies] = useState<Assembly[]>([]);
   const [financial, setFinancial] = useState({ balance: 0, lastUpdate: '' });
   const [condoUsers, setCondoUsers] = useState<User[]>([]);
@@ -49,21 +48,17 @@ const Dashboard: React.FC = () => {
   const [reports, setReports] = useState<FinancialReport[]>([]);
   const [expirationDate, setExpirationDate] = useState<string | null>(null);
   
-  // Estados de UI
   const [showUserList, setShowUserList] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isBankModalOpen, setIsBankModalOpen] = useState(false);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   
-  // Estados de Formulários
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [bankForm, setBankForm] = useState<BankInfo>({ bankName: '', agency: '', account: '', pixKey: '', asaasWalletId: '' });
   const [userForm, setUserForm] = useState({ nome: '', email: '', cpf: '', whatsapp: '', unidade: '', bloco: '', role: 'MORADOR', password: '' });
   
-  // Estado para Upload de Relatório
   const [reportForm, setReportForm] = useState({ month: new Date().toLocaleString('pt-BR', { month: 'long' }), year: new Date().getFullYear() });
 
-  // Permissões
   const isManager = user?.role === 'MANAGER' || user?.role === 'SINDICO' || user?.role === 'ADM_CONDO';
   const displayName = user?.nome || user?.email?.split('@')[0] || 'Morador';
 
@@ -72,7 +67,6 @@ const Dashboard: React.FC = () => {
   }, []);
 
   const loadData = async () => {
-    // Usamos Promise.allSettled para que se um falhar (ex: financeiro), os outros carreguem
     const results = await Promise.allSettled([
       api.get('/assemblies'),            
       api.get('/financial/balance'),     
@@ -89,12 +83,18 @@ const Dashboard: React.FC = () => {
     if (results[3].status === 'fulfilled' && results[3].value.data?.expirationDate) {
       setExpirationDate(results[3].value.data.expirationDate);
     }
-    if (results[4].status === 'fulfilled') setAuditLogs(results[4].value.data || []); // Se vier lista vazia do backend, ok
+    // Tratamento seguro para logs
+    if (results[4].status === 'fulfilled') {
+        setAuditLogs(results[4].value.data || []);
+    } else {
+        console.warn("Falha ao carregar logs", results[4].reason);
+        setAuditLogs([]);
+    }
+
     if (results[5].status === 'fulfilled') setReports(results[5].value.data || []);
     if (results[6].status === 'fulfilled') setBankForm(results[6].value.data || bankForm);
   };
 
-  // --- CÁLCULOS DE DADOS REAIS ---
   const activeAssemblies = assemblies.filter(a => a.status === 'OPEN');
   const totalVotes = assemblies.reduce((acc, curr) => acc + (curr.votes?.length || 0), 0);
   
@@ -119,7 +119,6 @@ const Dashboard: React.FC = () => {
     });
     
     if (totalVotes === 0) {
-        // Dados dummy para o gráfico não ficar vazio se não houver votos
         return [
             { name: 'Jan', votos: 0 }, { name: 'Fev', votos: 0 }, { name: 'Mar', votos: 0 },
             { name: 'Abr', votos: 0 }, { name: 'Mai', votos: 0 }, { name: 'Jun', votos: 0 },
@@ -133,8 +132,6 @@ const Dashboard: React.FC = () => {
     const hoursLeft = (new Date(a.endDate).getTime() - Date.now()) / 36e5;
     return hoursLeft < 48 && hoursLeft > 0;
   });
-
-  // --- AÇÕES ---
 
   const handleUpdateBalance = () => {
     const val = prompt("Informe o saldo atualizado (R$):", financial.balance.toString());
@@ -222,7 +219,6 @@ const Dashboard: React.FC = () => {
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-20">
       
-      {/* STATUS DE ASSINATURA */}
       {expirationDate && (
         <SubscriptionStatus 
             expirationDate={expirationDate} 
@@ -231,7 +227,6 @@ const Dashboard: React.FC = () => {
         />
       )}
 
-      {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Olá, {displayName.split(' ')[0]}</h1>
@@ -247,7 +242,6 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* SALDO E STATS */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-slate-900 text-white p-8 rounded-3xl shadow-xl border-b-4 border-emerald-500 relative overflow-hidden group">
           <div className="relative z-10">
@@ -289,7 +283,6 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* AÇÕES (SÓ GESTORES) */}
       {isManager && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Link to="/create-assembly" className="bg-emerald-600 hover:bg-emerald-700 text-white p-4 rounded-xl shadow-md transition-all hover:-translate-y-1 flex flex-col items-center justify-center text-center group">
@@ -311,7 +304,6 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* LISTA DE USUÁRIOS */}
       {showUserList && isManager && (
         <div className="bg-white p-6 rounded-2xl border-2 border-emerald-500 shadow-xl animate-in slide-in-from-top-4 duration-300">
           <div className="flex justify-between items-center mb-6">
@@ -358,7 +350,6 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* KPI Stats Secundários */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { title: 'Assembleias Abertas', value: activeAssemblies.length, icon: FileText, color: 'text-blue-600', bg: 'bg-blue-100' },
@@ -378,13 +369,12 @@ const Dashboard: React.FC = () => {
         ))}
       </div>
 
-      {/* GRÁFICO E AUDITORIA */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 lg:col-span-2">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-lg font-bold text-slate-800">Evolução de Participação</h2>
           </div>
-          {/* CORREÇÃO DO ERRO DO GRÁFICO: Adicionada altura mínima fixa para garantir renderização */}
+          {/* CORREÇÃO DO ERRO DO GRÁFICO */}
           <div className="h-72 min-h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData}>
@@ -403,7 +393,6 @@ const Dashboard: React.FC = () => {
             </ResponsiveContainer>
           </div>
 
-          {/* AUDITORIA (SÓ SINDICO) */}
           {isManager && (
             <div className="mt-8 pt-6 border-t border-slate-100">
                 <h3 className="text-sm font-black text-slate-700 uppercase flex items-center gap-2 mb-4">
@@ -416,7 +405,7 @@ const Dashboard: React.FC = () => {
                         <div key={log.id} className="flex gap-3 text-xs border-b border-slate-200 pb-2 last:border-0 last:pb-0">
                             <span className="font-mono text-slate-400 whitespace-nowrap">{new Date(log.timestamp).toLocaleDateString()}</span>
                             <div>
-                                <p className="font-bold text-slate-700">{log.action} <span className="font-normal text-slate-500">por {log.user}</span></p>
+                                <p className="font-bold text-slate-700">{log.action} <span className="font-normal text-slate-500">por {log.userName}</span></p>
                                 <p className="text-slate-500">{log.details}</p>
                             </div>
                         </div>
@@ -454,7 +443,6 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* MODAL RELATÓRIOS (ATUALIZADO PARA MÚLTIPLOS UPLOADS) */}
       {isReportModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
             <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-lg">
@@ -522,7 +510,6 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL BANCO */}
       {isBankModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
              <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-lg">
@@ -562,7 +549,6 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL USUÁRIO (ATUALIZADO COM ALTERAÇÃO DE SENHA) */}
       {isUserModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
              <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-lg">
@@ -572,7 +558,6 @@ const Dashboard: React.FC = () => {
                 </div>
                 
                 <form onSubmit={handleSaveUser} className="space-y-4">
-                    {/* Nome e CPF (Bloqueados na edição para segurança, liberados na criação) */}
                     <div>
                         <label className="text-xs font-bold text-slate-400 ml-1 uppercase">Nome Completo</label>
                         <input 
@@ -639,14 +624,12 @@ const Dashboard: React.FC = () => {
                         </select>
                     </div>
 
-                    {/* --- CAMPO DE SENHA (ALTERADO) --- */}
                     <div className="pt-2 border-t border-slate-100 mt-2">
                         <label className="text-xs font-black text-blue-600 ml-1 uppercase flex items-center gap-1">
                             <Shield size={12}/> {editingUser ? 'Redefinir Senha' : 'Senha Inicial'}
                         </label>
                         <input 
                             type="password" 
-                            // Se for novo usuário, é required. Se for edição, é opcional.
                             required={!editingUser} 
                             className={`w-full p-3 border rounded-xl transition-all ${editingUser ? 'border-blue-200 focus:ring-2 focus:ring-blue-500 bg-blue-50/50' : 'bg-white'}`}
                             placeholder={editingUser ? "Deixe em branco para manter a atual" : "Crie uma senha forte"} 
