@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, CartesianGrid 
 } from 'recharts';
 import { 
-  Users, FileText, CheckCircle, AlertTriangle, Plus, Megaphone, TrendingUp, Clock, ArrowRight, ShieldAlert, Calendar, Wallet, Shield, Edit, Trash2, Settings, Upload, Download, FileCheck, Banknote
+  Users, FileText, CheckCircle, AlertTriangle, Plus, Megaphone, TrendingUp, Calendar, Wallet, Shield, Edit, Settings, Upload, Download, FileCheck, Banknote, ShieldAlert, ArrowRight
 } from 'lucide-react';
 import api from '../services/api'; 
 import { Assembly, User } from '../types';
@@ -22,8 +22,8 @@ interface AuditLog {
 
 interface FinancialReport {
   id: string;
-  month: string; // Ex: "Janeiro"
-  year: number;  // Ex: 2026
+  month: string; 
+  year: number;  
   fileName: string;
   url: string;
   createdAt: string;
@@ -72,14 +72,15 @@ const Dashboard: React.FC = () => {
   }, []);
 
   const loadData = async () => {
+    // Usamos Promise.allSettled para que se um falhar (ex: financeiro), os outros carreguem
     const results = await Promise.allSettled([
-      api.get('/assemblies'),           
-      api.get('/financial/balance'),    
+      api.get('/assemblies'),            
+      api.get('/financial/balance'),     
       api.get('/users'),                
       api.get('/tenants/my-subscription'), 
-      api.get('/tenants/audit-logs'),   
-      api.get('/financial/reports'),    
-      api.get('/tenants/bank-info')     
+      api.get('/tenants/audit-logs'),    
+      api.get('/financial/reports'),     
+      api.get('/tenants/bank-info')      
     ]);
 
     if (results[0].status === 'fulfilled') setAssemblies(results[0].value.data || []);
@@ -88,7 +89,7 @@ const Dashboard: React.FC = () => {
     if (results[3].status === 'fulfilled' && results[3].value.data?.expirationDate) {
       setExpirationDate(results[3].value.data.expirationDate);
     }
-    if (results[4].status === 'fulfilled') setAuditLogs(results[4].value.data || []);
+    if (results[4].status === 'fulfilled') setAuditLogs(results[4].value.data || []); // Se vier lista vazia do backend, ok
     if (results[5].status === 'fulfilled') setReports(results[5].value.data || []);
     if (results[6].status === 'fulfilled') setBankForm(results[6].value.data || bankForm);
   };
@@ -118,6 +119,7 @@ const Dashboard: React.FC = () => {
     });
     
     if (totalVotes === 0) {
+        // Dados dummy para o gráfico não ficar vazio se não houver votos
         return [
             { name: 'Jan', votos: 0 }, { name: 'Fev', votos: 0 }, { name: 'Mar', votos: 0 },
             { name: 'Abr', votos: 0 }, { name: 'Mai', votos: 0 }, { name: 'Jun', votos: 0 },
@@ -138,8 +140,8 @@ const Dashboard: React.FC = () => {
     const val = prompt("Informe o saldo atualizado (R$):", financial.balance.toString());
     if (val && !isNaN(parseFloat(val))) {
       api.post('/financial/update', { balance: parseFloat(val) })
-         .then(() => loadData())
-         .catch(() => alert("Erro ao atualizar saldo."));
+          .then(() => loadData())
+          .catch(() => alert("Erro ao atualizar saldo."));
     }
   };
 
@@ -156,7 +158,6 @@ const Dashboard: React.FC = () => {
     e.preventDefault();
     try {
         if (editingUser) {
-            // Validação de Segurança no Frontend (embora o Backend deva ter a final)
             if (editingUser.role === 'ADMIN') {
                 alert("Você não pode editar um Super Admin da Votzz.");
                 return;
@@ -174,7 +175,6 @@ const Dashboard: React.FC = () => {
   };
 
   const openEditUser = (u: User) => {
-    // Bloqueia edição de Admins da Votzz
     if (u.role === 'ADMIN') {
         alert("Ação não permitida: Este usuário é um Administrador da Votzz.");
         return;
@@ -189,7 +189,7 @@ const Dashboard: React.FC = () => {
         unidade: u.unidade || '',
         bloco: u.bloco || '',
         role: u.role || 'MORADOR',
-        password: ''
+        password: '' 
     });
     setIsUserModalOpen(true);
   };
@@ -215,7 +215,7 @@ const Dashboard: React.FC = () => {
         });
         alert("Relatório adicionado com sucesso!");
         loadData();
-        e.target.value = ''; // Limpa o input
+        e.target.value = ''; 
     } catch (error) { alert("Erro ao enviar relatório."); }
   };
 
@@ -384,7 +384,8 @@ const Dashboard: React.FC = () => {
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-lg font-bold text-slate-800">Evolução de Participação</h2>
           </div>
-          <div className="h-72 w-full">
+          {/* CORREÇÃO DO ERRO DO GRÁFICO: Adicionada altura mínima fixa para garantir renderização */}
+          <div className="h-72 min-h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData}>
                 <defs>
@@ -561,60 +562,107 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL USUÁRIO (ATUALIZADO COM RESTRIÇÃO DE CPF E NOME) */}
+      {/* MODAL USUÁRIO (ATUALIZADO COM ALTERAÇÃO DE SENHA) */}
       {isUserModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
              <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-lg">
                 <div className="flex justify-between mb-6">
-                    <h3 className="font-black text-xl">{editingUser ? 'Editar Morador' : 'Novo Usuário'}</h3>
-                    <button onClick={() => setIsUserModalOpen(false)}><span className="text-2xl">&times;</span></button>
+                    <h3 className="font-black text-xl text-slate-800">{editingUser ? 'Editar Morador & Senha' : 'Novo Usuário'}</h3>
+                    <button onClick={() => setIsUserModalOpen(false)} className="text-slate-400 hover:text-slate-600"><span className="text-2xl">&times;</span></button>
                 </div>
+                
                 <form onSubmit={handleSaveUser} className="space-y-4">
-                    {/* Nome e CPF desabilitados se for Edição */}
-                    <input 
-                        required 
-                        className={`w-full p-3 border rounded-xl ${editingUser ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
-                        placeholder="Nome Completo" 
-                        value={userForm.nome} 
-                        onChange={e => setUserForm({...userForm, nome: e.target.value})} 
-                        disabled={!!editingUser} // Desabilita se estiver editando
-                        title={editingUser ? "Nome não pode ser alterado" : ""}
-                    />
-                    <input 
-                        required 
-                        type="email" 
-                        className="w-full p-3 border rounded-xl" 
-                        placeholder="E-mail" 
-                        value={userForm.email} 
-                        onChange={e => setUserForm({...userForm, email: e.target.value})} 
-                    />
-                    <div className="grid grid-cols-2 gap-4">
-                        <input 
-                            className={`w-full p-3 border rounded-xl ${editingUser ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`} 
-                            placeholder="CPF" 
-                            value={userForm.cpf} 
-                            onChange={e => setUserForm({...userForm, cpf: e.target.value})} 
-                            disabled={!!editingUser} // Desabilita se estiver editando
-                            title={editingUser ? "CPF não pode ser alterado" : ""}
-                        />
-                        <input className="w-full p-3 border rounded-xl" placeholder="WhatsApp" value={userForm.whatsapp} onChange={e => setUserForm({...userForm, whatsapp: e.target.value})} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <input className="w-full p-3 border rounded-xl" placeholder="Unidade (Ex: 101)" value={userForm.unidade} onChange={e => setUserForm({...userForm, unidade: e.target.value})} />
-                        <input className="w-full p-3 border rounded-xl" placeholder="Bloco (Ex: A)" value={userForm.bloco} onChange={e => setUserForm({...userForm, bloco: e.target.value})} />
-                    </div>
+                    {/* Nome e CPF (Bloqueados na edição para segurança, liberados na criação) */}
                     <div>
-                        <label className="text-xs font-bold text-slate-400 ml-1">Cargo</label>
-                        <select className="w-full p-3 border rounded-xl bg-white" value={userForm.role} onChange={e => setUserForm({...userForm, role: e.target.value})}>
-                            <option value="MORADOR">Morador</option>
-                            <option value="SINDICO">Síndico</option>
-                            <option value="ADM_CONDO">Administrador</option>
+                        <label className="text-xs font-bold text-slate-400 ml-1 uppercase">Nome Completo</label>
+                        <input 
+                            required 
+                            className={`w-full p-3 border rounded-xl font-bold text-slate-700 ${editingUser ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white'}`}
+                            placeholder="Nome Completo" 
+                            value={userForm.nome} 
+                            onChange={e => setUserForm({...userForm, nome: e.target.value})} 
+                            disabled={!!editingUser} 
+                        />
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-bold text-slate-400 ml-1 uppercase">E-mail</label>
+                        <input 
+                            required 
+                            type="email" 
+                            className="w-full p-3 border rounded-xl bg-white text-slate-700" 
+                            placeholder="exemplo@email.com" 
+                            value={userForm.email} 
+                            onChange={e => setUserForm({...userForm, email: e.target.value})} 
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 ml-1 uppercase">CPF</label>
+                            <input 
+                                className={`w-full p-3 border rounded-xl ${editingUser ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white'}`} 
+                                placeholder="000.000.000-00" 
+                                value={userForm.cpf} 
+                                onChange={e => setUserForm({...userForm, cpf: e.target.value})} 
+                                disabled={!!editingUser} 
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 ml-1 uppercase">WhatsApp</label>
+                            <input 
+                                className="w-full p-3 border rounded-xl bg-white text-slate-700" 
+                                placeholder="(00) 00000-0000" 
+                                value={userForm.whatsapp} 
+                                onChange={e => setUserForm({...userForm, whatsapp: e.target.value})} 
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 ml-1 uppercase">Unidade</label>
+                            <input className="w-full p-3 border rounded-xl bg-white text-slate-700" placeholder="Ex: 101" value={userForm.unidade} onChange={e => setUserForm({...userForm, unidade: e.target.value})} />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 ml-1 uppercase">Bloco</label>
+                            <input className="w-full p-3 border rounded-xl bg-white text-slate-700" placeholder="Ex: A" value={userForm.bloco} onChange={e => setUserForm({...userForm, bloco: e.target.value})} />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-bold text-slate-400 ml-1 uppercase">Cargo / Permissão</label>
+                        <select className="w-full p-3 border rounded-xl bg-white text-slate-700 font-medium" value={userForm.role} onChange={e => setUserForm({...userForm, role: e.target.value})}>
+                            <option value="MORADOR">Morador (Padrão)</option>
+                            <option value="SINDICO">Síndico (Gestor)</option>
+                            <option value="ADM_CONDO">Administrador (Staff)</option>
                         </select>
                     </div>
-                    {!editingUser && (
-                        <input type="password" required className="w-full p-3 border rounded-xl" placeholder="Senha Inicial" value={userForm.password} onChange={e => setUserForm({...userForm, password: e.target.value})} />
-                    )}
-                    <button type="submit" className="w-full bg-blue-600 text-white p-4 rounded-xl font-bold hover:bg-blue-700">{editingUser ? 'Salvar Alterações' : 'Criar Usuário'}</button>
+
+                    {/* --- CAMPO DE SENHA (ALTERADO) --- */}
+                    <div className="pt-2 border-t border-slate-100 mt-2">
+                        <label className="text-xs font-black text-blue-600 ml-1 uppercase flex items-center gap-1">
+                            <Shield size={12}/> {editingUser ? 'Redefinir Senha' : 'Senha Inicial'}
+                        </label>
+                        <input 
+                            type="password" 
+                            // Se for novo usuário, é required. Se for edição, é opcional.
+                            required={!editingUser} 
+                            className={`w-full p-3 border rounded-xl transition-all ${editingUser ? 'border-blue-200 focus:ring-2 focus:ring-blue-500 bg-blue-50/50' : 'bg-white'}`}
+                            placeholder={editingUser ? "Deixe em branco para manter a atual" : "Crie uma senha forte"} 
+                            value={userForm.password} 
+                            onChange={e => setUserForm({...userForm, password: e.target.value})} 
+                        />
+                        {editingUser && (
+                            <p className="text-[10px] text-slate-400 mt-1 ml-1">
+                                Preencha apenas se o morador solicitou a troca de senha.
+                            </p>
+                        )}
+                    </div>
+
+                    <button type="submit" className="w-full bg-blue-600 text-white p-4 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all mt-4">
+                        {editingUser ? 'Salvar Alterações' : 'Criar Usuário'}
+                    </button>
                 </form>
              </div>
         </div>
