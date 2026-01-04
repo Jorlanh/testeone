@@ -2,14 +2,12 @@
 import axios from 'axios';
 
 export const api = axios.create({
-  // Solução para o erro de TS no import.meta.env
   baseURL: (import.meta as any).env.VITE_API_URL || 'http://localhost:8080/api',
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Interceptor de Requisição: Adiciona Token e Tenant ID
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('@Votzz:token');
   const storedUser = localStorage.getItem('@Votzz:user');
@@ -34,7 +32,6 @@ api.interceptors.request.use((config) => {
   return Promise.reject(error);
 });
 
-// Interceptor de Resposta: Trata erros globais
 api.interceptors.response.use(
   (response) => response,
   (error) => {

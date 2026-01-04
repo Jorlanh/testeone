@@ -15,7 +15,7 @@ import { SubscriptionStatus } from '../components/SubscriptionStatus';
 interface AuditLog {
   id: string;
   action: string;
-  userName: string; 
+  userName: string; // O Backend envia "userName", não "user"
   details: string;
   timestamp: string;
 }
@@ -23,7 +23,7 @@ interface AuditLog {
 interface FinancialReport {
   id: string;
   month: string; 
-  year: number;  
+  year: number;   
   fileName: string;
   url: string;
   createdAt: string;
@@ -77,51 +77,74 @@ const Dashboard: React.FC = () => {
       api.get('/tenants/bank-info')       
     ]);
 
-    if (results[0].status === 'fulfilled') setAssemblies(results[0].value.data || []);
+    // PROTEÇÃO: Garante que se falhar ou não vir array, inicializa como lista vazia
+    if (results[0].status === 'fulfilled') {
+        const data = Array.isArray(results[0].value.data) ? results[0].value.data : [];
+        setAssemblies(data);
+    }
     if (results[1].status === 'fulfilled') setFinancial(results[1].value.data || { balance: 0, lastUpdate: 'N/A' });
-    if (results[2].status === 'fulfilled') setCondoUsers(results[2].value.data || []);
+    if (results[2].status === 'fulfilled') setCondoUsers(Array.isArray(results[2].value.data) ? results[2].value.data : []);
     if (results[3].status === 'fulfilled' && results[3].value.data?.expirationDate) {
       setExpirationDate(results[3].value.data.expirationDate);
     }
+    
     if (results[4].status === 'fulfilled') {
-        setAuditLogs(results[4].value.data || []);
+        setAuditLogs(Array.isArray(results[4].value.data) ? results[4].value.data : []);
     } else {
         setAuditLogs([]);
     }
 
-    if (results[5].status === 'fulfilled') setReports(results[5].value.data || []);
+    if (results[5].status === 'fulfilled') setReports(Array.isArray(results[5].value.data) ? results[5].value.data : []);
     if (results[6].status === 'fulfilled') setBankForm(results[6].value.data || bankForm);
   };
 
-  const activeAssemblies = assemblies.filter(a => a.status === 'OPEN');
-  const totalVotes = assemblies.reduce((acc, curr) => acc + (curr.votes?.length || 0), 0);
+  // --- LÓGICA DE FILTRAGEM CORRIGIDA ---
+  const activeAssemblies = useMemo(() => {
+    if (!Array.isArray(assemblies)) return [];
+    // Filtra assembleias que NÃO estão encerradas (mostra ABERTA e AGENDADA)
+    return assemblies.filter(a => {
+        const s = String(a.status || '').toUpperCase();
+        return s !== 'ENCERRADA' && s !== 'CLOSED' && s !== '';
+    });
+  }, [assemblies]);
+
+  const totalVotes = useMemo(() => {
+    if (!Array.isArray(assemblies)) return 0;
+    return assemblies.reduce((acc, curr) => acc + (curr.votes?.length || 0), 0);
+  }, [assemblies]);
   
   const engagementRate = useMemo(() => {
-    if (condoUsers.length === 0 || assemblies.length === 0) return 0;
+    if (!Array.isArray(condoUsers) || condoUsers.length === 0 || !Array.isArray(assemblies) || assemblies.length === 0) return 0;
     const avgVotes = totalVotes / assemblies.length;
     return Math.round((avgVotes / condoUsers.length) * 100);
-  }, [totalVotes, assemblies.length, condoUsers.length]);
+  }, [totalVotes, assemblies, condoUsers]);
 
   const chartData = useMemo(() => {
     const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const data = months.map(m => ({ name: m, votos: 0 }));
     
-    assemblies.forEach(a => {
-        const dateStr = a.startDate || a.dataInicio || new Date().toISOString();
-        const date = new Date(dateStr); 
-        if (!isNaN(date.getTime())) {
-            const monthIdx = date.getMonth();
-            const votes = a.votes?.length || 0;
-            data[monthIdx].votos += votes;
-        }
-    });
+    if (Array.isArray(assemblies)) {
+        assemblies.forEach(a => {
+            const dateStr = a.startDate || a.dataInicio || new Date().toISOString();
+            const date = new Date(dateStr); 
+            if (!isNaN(date.getTime())) {
+                const monthIdx = date.getMonth();
+                const votesCount = a.votes?.length || 0;
+                data[monthIdx].votos += votesCount;
+            }
+        });
+    }
     
+    if (totalVotes === 0) {
+        return months.slice(0, 6).map(m => ({ name: m, votos: 0 }));
+    }
     return data;
-  }, [assemblies]);
+  }, [assemblies, totalVotes]);
 
   const criticalAssemblies = activeAssemblies.filter(a => {
-    if (!a.endDate) return false;
-    const hoursLeft = (new Date(a.endDate).getTime() - Date.now()) / 36e5;
+    const limitDate = a.endDate || a.dataFim;
+    if (!limitDate) return false;
+    const hoursLeft = (new Date(limitDate).getTime() - Date.now()) / 36e5;
     return hoursLeft < 48 && hoursLeft > 0;
   });
 
@@ -344,7 +367,7 @@ const Dashboard: React.FC = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { title: 'Assembleias Abertas', value: activeAssemblies.length, icon: FileText, color: 'text-blue-600', bg: 'bg-blue-100' },
+          { title: 'Assembleias Ativas', value: activeAssemblies.length, icon: FileText, color: 'text-blue-600', bg: 'bg-blue-100' },
           { title: 'Engajamento Médio', value: `${engagementRate}%`, icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-100' },
           { title: 'Atenção Necessária', value: criticalAssemblies.length, icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-100' },
           { title: 'Total Usuários', value: condoUsers.length, icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-100' },
@@ -367,10 +390,10 @@ const Dashboard: React.FC = () => {
             <h2 className="text-lg font-bold text-slate-800">Evolução de Participação</h2>
           </div>
           
-          {/* CONTAINER COM ALTURA FIXA E MINWIDTH PARA EVITAR ERRO DE RENDERIZAÇÃO */}
-          <div className="w-full" style={{ height: '300px' }}>
-            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-              <AreaChart data={chartData}>
+          {/* CORREÇÃO DO ERRO DO GRÁFICO */}
+          <div className="w-full" style={{ height: '300px', minWidth: '100%', position: 'relative' }}>
+            <ResponsiveContainer width="100%" height="100%" minHeight={300}>
+              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorVotos" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
@@ -422,8 +445,8 @@ const Dashboard: React.FC = () => {
                <div className="space-y-3">
                  {criticalAssemblies.map(a => (
                    <div key={a.id} className="bg-white p-3 rounded-lg border border-orange-100 shadow-sm">
-                      <p className="text-sm font-bold text-slate-800 line-clamp-1">{a.title}</p>
-                      <Link to={`/assembly/${a.id}`} className="text-xs font-bold text-slate-500 mt-2 block hover:text-orange-600">Verificar Quórum &rarr;</Link>
+                      <p className="text-sm font-bold text-slate-800 line-clamp-1">{a.titulo || a.title}</p>
+                      <Link to={`/voting-room/${a.id}`} className="text-xs font-bold text-slate-500 mt-2 block hover:text-orange-600">Verificar Quórum &rarr;</Link>
                    </div>
                  ))}
                </div>
@@ -509,7 +532,7 @@ const Dashboard: React.FC = () => {
                     <h3 className="font-black text-xl flex items-center gap-2"><Banknote className="text-emerald-500"/> Conta do Condomínio</h3>
                     <button onClick={() => setIsBankModalOpen(false)}><span className="text-2xl">&times;</span></button>
                 </div>
-                <p className="text-sm text-slate-500 mb-6">Configure a conta para recebimento de reservas e pagamentos.</p>
+                <p className="text-sm text-slate-500 mb-6">Configure a conta para recebimento de taxas e reservas.</p>
                 <form onSubmit={handleSaveBankInfo} className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -535,7 +558,7 @@ const Dashboard: React.FC = () => {
                         <label className="text-xs font-bold text-slate-400 ml-1">Asaas Wallet ID (Opcional)</label>
                         <input className="w-full p-3 border rounded-xl font-mono text-sm bg-slate-50" value={bankForm.asaasWalletId} onChange={e => setBankForm({...bankForm, asaasWalletId: e.target.value})} placeholder="wallet_..." />
                     </div>
-                    <button type="submit" className="w-full bg-emerald-600 text-white p-4 rounded-xl font-bold hover:bg-emerald-700">Salvar Dados</button>
+                    <button type="submit" className="w-full bg-emerald-600 text-white p-4 rounded-xl font-bold hover:bg-emerald-700">Salvar Dados Bancários</button>
                 </form>
              </div>
         </div>

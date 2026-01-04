@@ -49,11 +49,10 @@ const CreateAssembly: React.FC = () => {
     try {
         let anexoUrl = '';
         if (attachment) {
-            // Em produção, deve-se fazer o upload para o S3 aqui
+            // Simulação de upload. Em produção, integrar com S3/Cloudinary
             anexoUrl = 'https://storage.votzz.com/attachment.pdf'; 
         }
 
-        // Define as opções enviando o campo "descricao" (Português) que o Java espera na entidade VoteOption
         let voteOptions = [
             { descricao: 'Sim' }, 
             { descricao: 'Não' }, 
@@ -64,7 +63,6 @@ const CreateAssembly: React.FC = () => {
             voteOptions = [{ descricao: 'Opção A' }, { descricao: 'Opção B' }];
         }
 
-        // PAYLOAD CORRIGIDO: Chaves em português para bater com Assembly.java
         const payload = {
             titulo: formData.title,
             description: formData.description,
@@ -75,17 +73,20 @@ const CreateAssembly: React.FC = () => {
             quorumType: formData.quorumType,
             voteType: formData.voteType,
             votePrivacy: formData.votePrivacy,
-            status: 'AGENDADA',
+            status: 'ABERTA', // MUDADO PARA ABERTA para garantir visibilidade imediata
             anexoUrl: anexoUrl,
             options: voteOptions
         };
 
         await api.post('/assemblies', payload);
         alert("Assembleia lançada com sucesso!");
-        navigate('/dashboard');
+        
+        // REDIRECIONAMENTO CORRIGIDO: Vai para a lista de assembleias, não para a dashboard
+        navigate('/assemblies'); 
+        
     } catch (err: any) {
         console.error("Erro na criação:", err.response?.data || err);
-        const msg = err.response?.data?.message || "Erro 500: Verifique o console do backend.";
+        const msg = err.response?.data?.message || "Erro ao criar assembleia. Verifique o console.";
         alert(msg);
     } finally {
         setSaving(false);

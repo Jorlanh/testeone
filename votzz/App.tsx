@@ -94,7 +94,8 @@ function App() {
             </PrivateRoute>
           } />
 
-          <Route path="/assembly/:id" element={
+          {/* ALTERAÇÃO AQUI: Mudado de /assembly/:id para /voting-room/:id para coincidir com o Link do AssemblyList */}
+          <Route path="/voting-room/:id" element={
             <PrivateRoute allowedRoles={['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER']}>
               <Layout><VotingRoom /></Layout> 
             </PrivateRoute>
