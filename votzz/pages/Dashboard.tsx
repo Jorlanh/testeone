@@ -15,7 +15,7 @@ import { SubscriptionStatus } from '../components/SubscriptionStatus';
 interface AuditLog {
   id: string;
   action: string;
-  userName: string; // O Backend envia "userName", não "user"
+  userName: string; 
   details: string;
   timestamp: string;
 }
@@ -68,13 +68,13 @@ const Dashboard: React.FC = () => {
 
   const loadData = async () => {
     const results = await Promise.allSettled([
-      api.get('/assemblies'),            
-      api.get('/financial/balance'),     
-      api.get('/users'),                
+      api.get('/assemblies'),             
+      api.get('/financial/balance'),      
+      api.get('/users'),                 
       api.get('/tenants/my-subscription'), 
-      api.get('/tenants/audit-logs'),    
-      api.get('/financial/reports'),     
-      api.get('/tenants/bank-info')      
+      api.get('/tenants/audit-logs'),     
+      api.get('/financial/reports'),      
+      api.get('/tenants/bank-info')       
     ]);
 
     if (results[0].status === 'fulfilled') setAssemblies(results[0].value.data || []);
@@ -83,11 +83,9 @@ const Dashboard: React.FC = () => {
     if (results[3].status === 'fulfilled' && results[3].value.data?.expirationDate) {
       setExpirationDate(results[3].value.data.expirationDate);
     }
-    // Tratamento seguro para logs
     if (results[4].status === 'fulfilled') {
         setAuditLogs(results[4].value.data || []);
     } else {
-        console.warn("Falha ao carregar logs", results[4].reason);
         setAuditLogs([]);
     }
 
@@ -118,14 +116,8 @@ const Dashboard: React.FC = () => {
         }
     });
     
-    if (totalVotes === 0) {
-        return [
-            { name: 'Jan', votos: 0 }, { name: 'Fev', votos: 0 }, { name: 'Mar', votos: 0 },
-            { name: 'Abr', votos: 0 }, { name: 'Mai', votos: 0 }, { name: 'Jun', votos: 0 },
-        ];
-    }
     return data;
-  }, [assemblies, totalVotes]);
+  }, [assemblies]);
 
   const criticalAssemblies = activeAssemblies.filter(a => {
     if (!a.endDate) return false;
@@ -374,9 +366,10 @@ const Dashboard: React.FC = () => {
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-lg font-bold text-slate-800">Evolução de Participação</h2>
           </div>
-          {/* CORREÇÃO DO ERRO DO GRÁFICO */}
-          <div className="h-72 min-h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          
+          {/* CONTAINER COM ALTURA FIXA E MINWIDTH PARA EVITAR ERRO DE RENDERIZAÇÃO */}
+          <div className="w-full" style={{ height: '300px' }}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="colorVotos" x1="0" y1="0" x2="0" y2="1">
@@ -486,7 +479,6 @@ const Dashboard: React.FC = () => {
                                 <Upload size={18}/> Selecionar PDF
                             </div>
                         </div>
-                        <p className="text-[10px] text-slate-400 mt-2 text-center">Você pode enviar quantos arquivos quiser.</p>
                     </div>
                 )}
                 
@@ -636,11 +628,6 @@ const Dashboard: React.FC = () => {
                             value={userForm.password} 
                             onChange={e => setUserForm({...userForm, password: e.target.value})} 
                         />
-                        {editingUser && (
-                            <p className="text-[10px] text-slate-400 mt-1 ml-1">
-                                Preencha apenas se o morador solicitou a troca de senha.
-                            </p>
-                        )}
                     </div>
 
                     <button type="submit" className="w-full bg-blue-600 text-white p-4 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all mt-4">

@@ -19,18 +19,20 @@ const AssemblyList: React.FC = () => {
     try {
       setLoading(true);
       const res = await api.get('/assemblies');
-      setAssemblies(res.data || []);
+      // Garante que res.data seja um array antes de setar o estado
+      setAssemblies(Array.isArray(res.data) ? res.data : []);
       setError(null);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erro ao carregar assembleias:", err);
-      setError("Não foi possível carregar as assembleias.");
+      setError("Erro ao carregar a lista. Verifique sua conexão e vínculo com o condomínio.");
     } finally {
       setLoading(false);
     }
   };
 
   const getStatusColor = (status: string) => {
-    switch (status) {
+    const s = status?.toUpperCase() || '';
+    switch (s) {
       case 'ABERTA': 
       case 'OPEN': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
       case 'AGENDADA': return 'bg-blue-100 text-blue-700 border-blue-200';
@@ -40,19 +42,19 @@ const AssemblyList: React.FC = () => {
     }
   };
 
-  if (loading) return <div className="p-10 text-center text-slate-500 animate-pulse">Carregando assembleias...</div>;
+  if (loading) return <div className="p-10 text-center text-slate-500 animate-pulse font-bold">Carregando assembleias...</div>;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Assembleias e Votações</h1>
           <p className="text-slate-500">Participe das decisões reais do seu condomínio</p>
         </div>
-        {(user?.role === 'MANAGER' || user?.role === 'SINDICO' || user?.role === 'ADM_CONDO') && (
+        {(user?.role === 'MANAGER' || user?.role === 'SINDICO' || user?.role === 'ADM_CONDO' || user?.role === 'ADMIN') && (
           <Link 
             to="/create-assembly" 
-            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors shadow-lg"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-all shadow-lg hover:-translate-y-0.5"
           >
             <Plus className="h-4 w-4" />
             <span>Nova Assembleia</span>
@@ -68,7 +70,7 @@ const AssemblyList: React.FC = () => {
       )}
 
       <div className="grid gap-4">
-        {assemblies.map((assembly) => (
+        {assemblies.length > 0 ? assemblies.map((assembly) => (
           <div key={assembly.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex-1">
@@ -76,18 +78,17 @@ const AssemblyList: React.FC = () => {
                   <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${getStatusColor(assembly.status)}`}>
                     {assembly.status}
                   </span>
-                  <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Decisão Coletiva</span>
+                  <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Assembleia Digital</span>
                 </div>
-                <h3 className="text-lg font-bold text-slate-800 mb-1">{assembly.title || assembly.titulo}</h3>
+                <h3 className="text-lg font-bold text-slate-800 mb-1">{assembly.titulo || assembly.title}</h3>
                 <p className="text-slate-600 text-sm line-clamp-2 mb-4">{assembly.description}</p>
                 
                 <div className="flex items-center space-x-6 text-sm text-slate-500">
                   <div className="flex items-center space-x-1.5">
                     <Calendar className="h-4 w-4 text-emerald-500" />
                     <span className="font-medium">
-                        {/* Correção do erro de Data */}
-                        {assembly.startDate || assembly.dataInicio 
-                            ? new Date(assembly.startDate || assembly.dataInicio!).toLocaleDateString() 
+                        {assembly.dataInicio || assembly.startDate 
+                            ? new Date(assembly.dataInicio || assembly.startDate!).toLocaleDateString() 
                             : 'Data a definir'}
                     </span>
                   </div>
@@ -100,18 +101,16 @@ const AssemblyList: React.FC = () => {
 
               <div>
                 <Link 
-                  to={`/assembly/${assembly.id}`}
+                  to={`/voting-room/${assembly.id}`}
                   className="inline-flex items-center justify-center px-6 py-3 border border-slate-200 shadow-sm text-sm font-bold rounded-xl text-slate-700 bg-white hover:bg-slate-50 w-full md:w-auto transition-all hover:border-emerald-500 hover:text-emerald-600"
                 >
-                  {(user?.role === 'MANAGER' || user?.role === 'SINDICO') ? 'Gerenciar Sala' : 'Entrar na Sala'}
+                  {(user?.role === 'MANAGER' || user?.role === 'SINDICO' || user?.role === 'ADMIN') ? 'Gerenciar' : 'Votar'}
                   <ChevronRight className="ml-2 h-4 w-4" />
                 </Link>
               </div>
             </div>
           </div>
-        ))}
-
-        {assemblies.length === 0 && !loading && !error && (
+        )) : !loading && !error && (
           <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300">
             <p className="text-slate-500 font-medium">Nenhuma assembleia encontrada.</p>
           </div>
