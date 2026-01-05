@@ -10,7 +10,6 @@ const AssemblyList: React.FC = () => {
   const [assemblies, setAssemblies] = useState<Assembly[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
   const [activeTab, setActiveTab] = useState<'ATV' | 'HIS'>('ATV');
 
   const isManager = user?.role === 'MANAGER' || user?.role === 'SINDICO' || user?.role === 'ADMIN' || user?.role === 'ADM_CONDO';
@@ -24,20 +23,22 @@ const AssemblyList: React.FC = () => {
       setLoading(true);
       setError(null);
       const res = await api.get('/assemblies');
+      console.log("API Assemblies Response:", res.data); // LOG PARA DEBUG
       const data = Array.isArray(res.data) ? res.data : [];
       setAssemblies(data);
     } catch (err: any) {
+      console.error("Erro ao carregar lista:", err);
       setError("Erro ao carregar a lista. Verifique seu vínculo com o condomínio.");
     } finally {
       setLoading(false);
     }
   };
 
-  // LÓGICA DE FILTRAGEM CORRIGIDA: Inclui AGENDADA, ABERTA, OPEN, etc.
+  // FILTRO CORRIGIDO: Inclui AGENDADA, ABERTA e OPEN na aba "Em Andamento"
   const activeAssemblies = useMemo(() => 
     assemblies.filter(a => {
       const s = a.status?.toUpperCase() || '';
-      return s !== 'ENCERRADA' && s !== 'CLOSED' && s !== '';
+      return (s === 'AGENDADA' || s === 'ABERTA' || s === 'OPEN' || s === 'EM_ANDAMENTO');
     }), [assemblies]);
   
   const historicalAssemblies = useMemo(() => 
@@ -61,10 +62,11 @@ const AssemblyList: React.FC = () => {
   };
 
   const handleExportDossier = (id: string) => {
-    window.open(`http://localhost:8080/api/assemblies/${id}/dossier`, '_blank');
+    // Usa o baseURL configurado no axios
+    window.open(`${api.defaults.baseURL}/assemblies/${id}/dossier`, '_blank');
   };
 
-  if (loading) return <div className="p-10 text-center text-slate-500 animate-pulse font-bold">Carregando assembleias...</div>;
+  if (loading) return <div className="p-20 text-center text-slate-500 animate-pulse font-bold">Carregando assembleias...</div>;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-20">
@@ -154,7 +156,6 @@ const AssemblyList: React.FC = () => {
                       <Download size={16} /> Dossiê
                     </button>
                   )}
-
                   <Link 
                     to={`/voting-room/${assembly.id}`}
                     className={`inline-flex items-center justify-center px-6 py-3 border shadow-sm text-sm font-bold rounded-xl w-full md:w-auto transition-all ${

@@ -15,7 +15,7 @@ import { SubscriptionStatus } from '../components/SubscriptionStatus';
 interface AuditLog {
   id: string;
   action: string;
-  userName: string; // O Backend envia "userName", não "user"
+  userName: string; 
   details: string;
   timestamp: string;
 }
@@ -48,6 +48,15 @@ const Dashboard: React.FC = () => {
   const [reports, setReports] = useState<FinancialReport[]>([]);
   const [expirationDate, setExpirationDate] = useState<string | null>(null);
   
+  // --- NOVOS ESTADOS PARA DADOS REAIS DO BACKEND ---
+  const [realStats, setRealStats] = useState({
+    totalUsers: 0,
+    activeAssemblies: 0,
+    engagement: 0,
+    yearlyVotes: 0,
+    attentionRequired: 0
+  });
+
   const [showUserList, setShowUserList] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isBankModalOpen, setIsBankModalOpen] = useState(false);
@@ -67,41 +76,42 @@ const Dashboard: React.FC = () => {
   }, []);
 
   const loadData = async () => {
-    const results = await Promise.allSettled([
-      api.get('/assemblies'),             
-      api.get('/financial/balance'),      
-      api.get('/users'),                 
-      api.get('/tenants/my-subscription'), 
-      api.get('/tenants/audit-logs'),     
-      api.get('/financial/reports'),      
-      api.get('/tenants/bank-info')       
-    ]);
+    try {
+        const results = await Promise.allSettled([
+          api.get('/assemblies'),             
+          api.get('/financial/balance'),      
+          api.get('/users'),                 
+          api.get('/tenants/my-subscription'), 
+          api.get('/tenants/audit-logs'),     
+          api.get('/financial/reports'),      
+          api.get('/tenants/bank-info'),
+          api.get('/condo/dashboard/stats') 
+        ]);
 
-    // PROTEÇÃO: Garante que se falhar ou não vir array, inicializa como lista vazia
-    if (results[0].status === 'fulfilled') {
-        const data = Array.isArray(results[0].value.data) ? results[0].value.data : [];
-        setAssemblies(data);
+        if (results[0].status === 'fulfilled') {
+            const data = Array.isArray(results[0].value.data) ? results[0].value.data : [];
+            console.log("Dashboard - Assembleias recebidas:", data);
+            setAssemblies(data);
+        }
+        if (results[1].status === 'fulfilled') setFinancial(results[1].value.data || { balance: 0, lastUpdate: 'N/A' });
+        if (results[2].status === 'fulfilled') setCondoUsers(Array.isArray(results[2].value.data) ? results[2].value.data : []);
+        if (results[3].status === 'fulfilled') setExpirationDate(results[3].value.data?.expirationDate);
+        if (results[4].status === 'fulfilled') setAuditLogs(results[4].value.data || []);
+        if (results[5].status === 'fulfilled') setReports(results[5].value.data || []);
+        if (results[6].status === 'fulfilled') setBankForm(results[6].value.data || bankForm);
+        
+        // ATUALIZA OS CARDS COM DADOS CALCULADOS PELO BACKEND (REAIS)
+        if (results[7].status === 'fulfilled') {
+          console.log("Dashboard - Stats Reais:", results[7].value.data);
+          setRealStats(results[7].value.data);
+        }
+    } catch (error) {
+        console.error("Erro ao carregar dados do dashboard:", error);
     }
-    if (results[1].status === 'fulfilled') setFinancial(results[1].value.data || { balance: 0, lastUpdate: 'N/A' });
-    if (results[2].status === 'fulfilled') setCondoUsers(Array.isArray(results[2].value.data) ? results[2].value.data : []);
-    if (results[3].status === 'fulfilled' && results[3].value.data?.expirationDate) {
-      setExpirationDate(results[3].value.data.expirationDate);
-    }
-    
-    if (results[4].status === 'fulfilled') {
-        setAuditLogs(Array.isArray(results[4].value.data) ? results[4].value.data : []);
-    } else {
-        setAuditLogs([]);
-    }
-
-    if (results[5].status === 'fulfilled') setReports(Array.isArray(results[5].value.data) ? results[5].value.data : []);
-    if (results[6].status === 'fulfilled') setBankForm(results[6].value.data || bankForm);
   };
 
-  // --- LÓGICA DE FILTRAGEM CORRIGIDA ---
-  const activeAssemblies = useMemo(() => {
+  const activeAssembliesList = useMemo(() => {
     if (!Array.isArray(assemblies)) return [];
-    // Filtra assembleias que NÃO estão encerradas (mostra ABERTA e AGENDADA)
     return assemblies.filter(a => {
         const s = String(a.status || '').toUpperCase();
         return s !== 'ENCERRADA' && s !== 'CLOSED' && s !== '';
@@ -134,14 +144,10 @@ const Dashboard: React.FC = () => {
             }
         });
     }
-    
-    if (totalVotes === 0) {
-        return months.slice(0, 6).map(m => ({ name: m, votos: 0 }));
-    }
     return data;
-  }, [assemblies, totalVotes]);
+  }, [assemblies]);
 
-  const criticalAssemblies = activeAssemblies.filter(a => {
+  const criticalAssemblies = activeAssembliesList.filter(a => {
     const limitDate = a.endDate || a.dataFim;
     if (!limitDate) return false;
     const hoursLeft = (new Date(limitDate).getTime() - Date.now()) / 36e5;
@@ -287,12 +293,12 @@ const Dashboard: React.FC = () => {
         <div className="grid grid-cols-2 gap-4">
            <div className="bg-white p-6 rounded-2xl border shadow-sm flex flex-col justify-center">
               <Users className="text-blue-500 mb-2" />
-              <p className="text-3xl font-black text-slate-800">{condoUsers.length}</p>
+              <p className="text-3xl font-black text-slate-800">{realStats.totalUsers || condoUsers.length}</p>
               <p className="text-xs text-slate-500 font-bold uppercase">Moradores</p>
            </div>
            <div className="bg-white p-6 rounded-2xl border shadow-sm flex flex-col justify-center">
               <CheckCircle className="text-emerald-500 mb-2" />
-              <p className="text-3xl font-black text-slate-800">{totalVotes}</p>
+              <p className="text-3xl font-black text-slate-800">{realStats.yearlyVotes || totalVotes}</p>
               <p className="text-xs text-slate-500 font-bold uppercase">Votos (Ano)</p>
            </div>
         </div>
@@ -367,10 +373,10 @@ const Dashboard: React.FC = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { title: 'Assembleias Ativas', value: activeAssemblies.length, icon: FileText, color: 'text-blue-600', bg: 'bg-blue-100' },
-          { title: 'Engajamento Médio', value: `${engagementRate}%`, icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-100' },
-          { title: 'Atenção Necessária', value: criticalAssemblies.length, icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-100' },
-          { title: 'Total Usuários', value: condoUsers.length, icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-100' },
+          { title: 'Assembleias Ativas', value: realStats.activeAssemblies || activeAssembliesList.length, icon: FileText, color: 'text-blue-600', bg: 'bg-blue-100' },
+          { title: 'Engajamento Médio', value: `${realStats.engagement || engagementRate}%`, icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-100' },
+          { title: 'Atenção Necessária', value: realStats.attentionRequired || criticalAssemblies.length, icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-100' },
+          { title: 'Total Usuários', value: realStats.totalUsers || condoUsers.length, icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-100' },
         ].map((stat, idx) => (
           <div key={idx} className="bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
              <div>
@@ -390,10 +396,9 @@ const Dashboard: React.FC = () => {
             <h2 className="text-lg font-bold text-slate-800">Evolução de Participação</h2>
           </div>
           
-          {/* CORREÇÃO DO ERRO DO GRÁFICO */}
-          <div className="w-full" style={{ height: '300px', minWidth: '100%', position: 'relative' }}>
+          <div className="w-full h-[300px] min-w-full relative">
             <ResponsiveContainer width="100%" height="100%" minHeight={300}>
-              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <AreaChart data={chartData.length > 0 ? chartData : [{name: 'Jan', votos: 0}]} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorVotos" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
@@ -502,6 +507,7 @@ const Dashboard: React.FC = () => {
                                 <Upload size={18}/> Selecionar PDF
                             </div>
                         </div>
+                        <p className="text-[10px] text-slate-400 mt-2 text-center">Você pode enviar quantos arquivos quiser.</p>
                     </div>
                 )}
                 

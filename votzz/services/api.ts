@@ -19,8 +19,10 @@ api.interceptors.request.use((config) => {
   if (storedUser) {
     try {
       const user = JSON.parse(storedUser);
-      if (user.tenantId) {
-        config.headers['X-Tenant-ID'] = user.tenantId;
+      // CORREÇÃO: Tenta pegar o ID do tenant de qualquer lugar (raiz ou objeto interno)
+      const tenantId = user.tenantId || (user.tenant && user.tenant.id);
+      if (tenantId) {
+        config.headers['X-Tenant-ID'] = tenantId;
       }
     } catch (e) {
       console.error("Erro ao parsear usuário do localStorage", e);

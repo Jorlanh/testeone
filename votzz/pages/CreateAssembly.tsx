@@ -49,7 +49,6 @@ const CreateAssembly: React.FC = () => {
     try {
         let anexoUrl = '';
         if (attachment) {
-            // Simulação de upload. Em produção, integrar com S3/Cloudinary
             anexoUrl = 'https://storage.votzz.com/attachment.pdf'; 
         }
 
@@ -73,21 +72,19 @@ const CreateAssembly: React.FC = () => {
             quorumType: formData.quorumType,
             voteType: formData.voteType,
             votePrivacy: formData.votePrivacy,
-            status: 'ABERTA', // MUDADO PARA ABERTA para garantir visibilidade imediata
+            status: 'AGENDADA', // PADRONIZADO PARA CAIR NA PASTA "EM ANDAMENTO"
             anexoUrl: anexoUrl,
             options: voteOptions
         };
 
+        console.log("Enviando Payload:", payload);
         await api.post('/assemblies', payload);
         alert("Assembleia lançada com sucesso!");
-        
-        // REDIRECIONAMENTO CORRIGIDO: Vai para a lista de assembleias, não para a dashboard
         navigate('/assemblies'); 
         
     } catch (err: any) {
         console.error("Erro na criação:", err.response?.data || err);
-        const msg = err.response?.data?.message || "Erro ao criar assembleia. Verifique o console.";
-        alert(msg);
+        alert("Erro ao criar: " + (err.response?.data?.error || "Verifique o console"));
     } finally {
         setSaving(false);
     }
@@ -225,7 +222,7 @@ const CreateAssembly: React.FC = () => {
 
           <div className="pt-6 border-t border-slate-50 flex gap-4">
             <button type="button" onClick={() => navigate('/dashboard')} className="flex-1 py-4 border-2 border-slate-100 rounded-2xl text-slate-500 font-bold">Descartar</button>
-            <button type="submit" disabled={saving} className="flex-[2] py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xl shadow-xl">
+            <button type="submit" disabled={saving} className="flex-[2] py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xl shadow-xl transition-all">
               {saving ? <Loader2 className="animate-spin h-6 w-6 mx-auto" /> : 'Lançar Assembleia'}
             </button>
           </div>

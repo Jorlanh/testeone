@@ -75,7 +75,6 @@ function App() {
           <Route path="/affiliate/register" element={<AffiliateRegister />} />
 
           {/* --- ÁREA LOGADA --- */}
-          
           <Route path="/dashboard" element={
             <PrivateRoute allowedRoles={['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER']}>
               <Layout><Dashboard /></Layout>
@@ -94,7 +93,6 @@ function App() {
             </PrivateRoute>
           } />
 
-          {/* ALTERAÇÃO AQUI: Mudado de /assembly/:id para /voting-room/:id para coincidir com o Link do AssemblyList */}
           <Route path="/voting-room/:id" element={
             <PrivateRoute allowedRoles={['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER']}>
               <Layout><VotingRoom /></Layout> 
