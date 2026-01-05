@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { 
   BarChart2, CheckSquare, Megaphone, Calendar as CalendarIcon, Plus, Clock, 
   AlertCircle, FileText, UserCheck, Bell, Star as StarIcon, Gavel, ShieldCheck, X, CheckCircle, ChevronRight,
-  Edit2, Trash2, Download, Archive, Eye, Target // Added Target import
+  Edit2, Trash2, Download, Archive, Eye, Target, Printer
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
-// StarIcon Component (local definition as requested)
+// StarIcon Component (local definition)
 const StarIconComp = ({ className }: { className?: string }) => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
         <path fillRule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.007 5.404.433c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.433 2.082-5.006z" clipRule="evenodd" />
@@ -37,11 +37,11 @@ const Governance: React.FC = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [showPollModal, setShowPollModal] = useState(false);
-  const [pollForm, setPollForm] = useState({ title: '', description: '', endDate: '', options: ['Sim', 'Não'] });
+  const [pollForm, setPollForm] = useState({ title: '', description: '', endDate: '', options: ['Sim', 'Não'], autoArchiveDate: '' });
   
   const [showAnnModal, setShowAnnModal] = useState(false);
   const [annForm, setAnnForm] = useState({ 
-    title: '', content: '', priority: 'NORMAL', targetType: 'ALL', targetValue: '', requiresConfirmation: false 
+    title: '', content: '', priority: 'NORMAL', targetType: 'ALL', targetValue: '', requiresConfirmation: false, autoArchiveDate: '' 
   });
 
   const [showEventModal, setShowEventModal] = useState(false);
@@ -55,7 +55,6 @@ const Governance: React.FC = () => {
     try {
         const response = await api.get('/governance/dashboard');
         const safeData = response.data || {};
-        // Ensure structure exists to avoid undefined errors
         safeData.polls = safeData.polls || { active: [], archived: [] };
         safeData.announcements = safeData.announcements || { active: [], archived: [] };
         safeData.calendar = safeData.calendar || [];
@@ -74,7 +73,6 @@ const Governance: React.FC = () => {
 
   const handleVote = async (pollId: string, optionLabel: string) => {
       if (!data) return;
-      // Search in both lists
       const allPolls = [...(data.polls.active || []), ...(data.polls.archived || [])];
       const poll = allPolls.find(p => p.id === pollId);
       const option = poll?.options.find((o: any) => o.label === optionLabel);
@@ -84,11 +82,19 @@ const Governance: React.FC = () => {
       try {
           await api.post(`/governance/polls/${pollId}/vote`, { optionId: option.id });
           alert("Voto registrado com sucesso!");
-          loadDashboard();
+          loadDashboard(); // Recarrega para computar votos e atualizar UI
       } catch (e: any) { 
           alert("Erro ao votar: " + (e.response?.data?.message || e.message)); 
       }
   };
+
+  const handleConfirmRead = async (annId: string) => {
+      try {
+          await api.post(`/governance/announcements/${annId}/read`);
+          alert("Leitura confirmada!");
+          loadDashboard(); // Recarrega para atualizar o contador de leituras
+      } catch (e) { alert("Erro ao confirmar leitura."); }
+  }
 
   const handleDelete = async (type: 'polls' | 'announcements' | 'events', id: string) => {
       if(!window.confirm("ATENÇÃO: Essa ação é irreversível. Deseja continuar?")) return;
@@ -100,18 +106,20 @@ const Governance: React.FC = () => {
 
   const handleDownloadPdf = async (pollId: string, title: string) => {
       try {
+          // Implementação da Impressora: chama o endpoint de report do backend como blob
           const response = await api.get(`/governance/polls/${pollId}/report`, { responseType: 'blob' });
-          const url = window.URL.createObjectURL(new Blob([response.data]));
+          const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
           const link = document.createElement('a');
           link.href = url;
-          link.setAttribute('download', `microdecisoes_${title.replace(/\s+/g, '_')}_Votzz.pdf`);
+          link.setAttribute('download', `dossie_auditoria_${title.replace(/\s+/g, '_')}_Votzz.pdf`);
           document.body.appendChild(link);
           link.click();
           link.remove();
+          window.URL.revokeObjectURL(url);
       } catch (e) { alert("Erro ao gerar PDF."); }
   };
 
-  // --- EDIT PREP ---
+  // --- EDIT PREP (Mantido igual) ---
   const openEdit = (type: 'poll' | 'ann' | 'event', item: any) => {
       setIsEditing(true);
       setEditingId(item.id);
@@ -120,7 +128,8 @@ const Governance: React.FC = () => {
           setPollForm({ 
               title: item.title, 
               description: item.description, 
-              endDate: item.endDate ? item.endDate.split('T')[0] : '', 
+              endDate: item.endDate ? item.endDate.split('T')[0] : '',
+              autoArchiveDate: item.autoArchiveDate ? item.autoArchiveDate.split('T')[0] : '', 
               options: item.options ? item.options.map((o:any) => o.label) : ['Sim', 'Não'] 
           });
           setShowPollModal(true);
@@ -131,7 +140,8 @@ const Governance: React.FC = () => {
               priority: item.priority, 
               targetType: item.targetType || 'ALL',
               targetValue: item.targetValue || '',
-              requiresConfirmation: item.requiresConfirmation || false
+              requiresConfirmation: item.requiresConfirmation || false,
+              autoArchiveDate: item.autoArchiveDate ? item.autoArchiveDate.split('T')[0] : ''
           });
           setShowAnnModal(true);
       } else {
@@ -140,16 +150,16 @@ const Governance: React.FC = () => {
       }
   };
 
-  // --- SUBMITS ---
+  // --- SUBMITS (Mantidos iguais) ---
   const submitPoll = async (e: React.FormEvent) => {
       e.preventDefault();
-      
-      // FIX 1: Append time to date string for backend compatibility
       const formattedEndDate = pollForm.endDate.includes('T') ? pollForm.endDate : `${pollForm.endDate}T23:59:59`;
+      const formattedAutoArchive = pollForm.autoArchiveDate ? (pollForm.autoArchiveDate.includes('T') ? pollForm.autoArchiveDate : `${pollForm.autoArchiveDate}T23:59:59`) : null;
 
       const payload = { 
           ...pollForm, 
-          endDate: formattedEndDate, 
+          endDate: formattedEndDate,
+          autoArchiveDate: formattedAutoArchive, 
           options: pollForm.options.map((opt: string) => ({ label: opt })) 
       };
 
@@ -164,9 +174,13 @@ const Governance: React.FC = () => {
 
   const submitAnn = async (e: React.FormEvent) => {
       e.preventDefault();
+      const formattedAutoArchive = annForm.autoArchiveDate ? (annForm.autoArchiveDate.includes('T') ? annForm.autoArchiveDate : `${annForm.autoArchiveDate}T23:59:59`) : null;
+      
+      const payload = { ...annForm, autoArchiveDate: formattedAutoArchive };
+
       try {
-          if(isEditing && editingId) await api.put(`/governance/announcements/${editingId}`, annForm);
-          else await api.post('/governance/announcements', annForm);
+          if(isEditing && editingId) await api.put(`/governance/announcements/${editingId}`, payload);
+          else await api.post('/governance/announcements', payload);
           
           setShowAnnModal(false); 
           loadDashboard();
@@ -184,17 +198,21 @@ const Governance: React.FC = () => {
       } catch(e) { alert("Erro ao salvar evento."); }
   };
 
+  // Helper para contar votos
+  const getVoteCount = (poll: any, optionId: string) => {
+      if(!poll.votes) return 0;
+      return poll.votes.filter((v: any) => v.optionId === optionId).length;
+  };
+
   if (loading) return <div className="p-10 text-center text-slate-500 animate-pulse">Carregando painel de governança...</div>;
   if (!data) return <div className="p-10 text-center text-red-500">Erro ao carregar dados. Tente recarregar.</div>;
 
-  // Safe Lists
   const pollsList = data?.polls?.[subTab] || [];
   const announcementsList = data?.announcements?.[subTab] || [];
 
   return (
     <div className="space-y-8 animate-in fade-in pb-20">
-       
-       {/* HEADER */}
+       {/* HEADER (Mantido) */}
        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -214,7 +232,7 @@ const Governance: React.FC = () => {
           </div>
        </div>
 
-       {/* === DASHBOARD === */}
+       {/* === DASHBOARD KPI (Mantido) === */}
        {activeTab === 'dashboard' && (
            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
@@ -223,7 +241,7 @@ const Governance: React.FC = () => {
                   <KpiCard title="Participação Média" value={`${data.kpis.participationRate}%`} icon={UserCheck} color="text-emerald-500" bg="bg-white" iconBg="bg-emerald-50" />
                   <KpiCard title="Ações no Período" value={data.kpis.totalActions} icon={FileText} color="text-purple-500" bg="bg-white" iconBg="bg-purple-50" />
                </div>
-
+               {/* Timeline (Mantida) */}
                <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-slate-100 shadow-sm">
                    <h3 className="font-bold text-slate-800 mb-6 flex items-center"><Clock className="w-5 h-5 mr-2 text-slate-400" /> Linha do Tempo (Tempo Real)</h3>
                    <div className="relative pl-2">
@@ -248,7 +266,7 @@ const Governance: React.FC = () => {
                        ))}
                    </div>
                </div>
-
+               {/* Conselho (Mantido) */}
                <div className="space-y-6">
                    <div className="bg-slate-900 text-white p-6 rounded-xl shadow-lg relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-8 opacity-10"><ShieldCheck className="w-32 h-32" /></div>
@@ -262,7 +280,7 @@ const Governance: React.FC = () => {
            </div>
        )}
 
-       {/* === POLLS === */}
+       {/* === POLLS (ENQUETES) === */}
        {activeTab === 'polls' && (
            <div className="space-y-6 animate-in fade-in">
                 <div className="flex justify-between items-center">
@@ -274,13 +292,13 @@ const Governance: React.FC = () => {
                         </div>
                     </div>
                     {canManage && (
-                        <button onClick={() => { setIsEditing(false); setPollForm({ title: '', description: '', endDate: '', options: ['Sim', 'Não'] }); setShowPollModal(true); }} className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold flex items-center hover:bg-emerald-700 transition-colors shadow-sm">
+                        <button onClick={() => { setIsEditing(false); setPollForm({ title: '', description: '', endDate: '', options: ['Sim', 'Não'], autoArchiveDate: '' }); setShowPollModal(true); }} className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold flex items-center hover:bg-emerald-700 transition-colors shadow-sm">
                             <Plus className="w-4 h-4 mr-2" /> Criar Enquete
                         </button>
                     )}
                 </div>
                 
-                {/* MODAL */}
+                {/* MODAL ENQUETE (Mantido) */}
                 {showPollModal && (
                     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                         <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95">
@@ -289,8 +307,12 @@ const Governance: React.FC = () => {
                                 <input type="text" placeholder="Título da Decisão" required className="w-full p-3 border rounded-lg" value={pollForm.title} onChange={e => setPollForm({...pollForm, title: e.target.value})}/>
                                 <textarea placeholder="Descrição detalhada..." required className="w-full p-3 border rounded-lg" rows={3} value={pollForm.description} onChange={e => setPollForm({...pollForm, description: e.target.value})}/>
                                 <div>
-                                    <label className="text-xs font-bold text-slate-500 uppercase">Data Limite (Arquivamento Automático)</label>
+                                    <label className="text-xs font-bold text-slate-500 uppercase">Encerramento Votação</label>
                                     <input type="date" required className="w-full p-3 border rounded-lg mt-1" value={pollForm.endDate} onChange={e => setPollForm({...pollForm, endDate: e.target.value})}/>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500 uppercase">Arquivar Automaticamente (Data)</label>
+                                    <input type="date" className="w-full p-3 border rounded-lg mt-1" value={pollForm.autoArchiveDate} onChange={e => setPollForm({...pollForm, autoArchiveDate: e.target.value})}/>
                                 </div>
                                 <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-slate-100">
                                     <button type="button" onClick={() => setShowPollModal(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">Cancelar</button>
@@ -305,8 +327,12 @@ const Governance: React.FC = () => {
                     {pollsList.map((poll: any) => (
                         <div key={poll.id} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow relative group">
                             <div className="absolute top-4 right-4 flex gap-2">
-                                {subTab === 'archived' && (
-                                    <button onClick={() => handleDownloadPdf(poll.id, poll.title)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Baixar Relatório em PDF"><Download size={16}/></button>
+                                {/* Botão de Impressora/Dossiê (Aparece para Síndico e Adm) */}
+                                {canManage && (
+                                    <button onClick={() => handleDownloadPdf(poll.id, poll.title)} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors" title="Baixar Dossiê de Auditoria (Imprimir)"><Printer size={18}/></button>
+                                )}
+                                {subTab === 'archived' && !canManage && (
+                                    <button onClick={() => handleDownloadPdf(poll.id, poll.title)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Baixar Relatório"><Download size={16}/></button>
                                 )}
                                 {canManage && (
                                     <>
@@ -324,18 +350,54 @@ const Governance: React.FC = () => {
                             </div>
                             <h3 className="font-bold text-slate-900 text-lg mb-2">{poll.title}</h3>
                             <p className="text-sm text-slate-600 mb-6">{poll.description}</p>
-                            
-                            {poll.status === 'OPEN' ? (
-                                <div className="space-y-3">
+
+                            {/* AUDITORIA REAL-TIME PARA SÍNDICO */}
+                            {canManage && (
+                                <div className="mb-4 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-2 flex items-center gap-1"><Target size={12}/> Auditoria Parcial</p>
                                     {poll.options.map((opt: any) => (
-                                        <button key={opt.id} onClick={() => handleVote(poll.id, opt.label)} className="w-full p-3 border rounded-lg bg-white hover:bg-slate-50 text-sm font-medium text-slate-700 text-left transition-colors border-slate-200 hover:border-emerald-300 active:bg-emerald-50">
-                                            {opt.label}
-                                        </button>
+                                        <div key={opt.id} className="flex justify-between text-xs mb-1">
+                                            <span className="text-slate-600">{opt.label}</span>
+                                            <span className="font-bold text-emerald-600">{getVoteCount(poll, opt.id)} votos</span>
+                                        </div>
                                     ))}
                                 </div>
+                            )}
+                            
+                            {poll.status === 'OPEN' ? (
+                                <>
+                                {poll.userHasVoted ? (
+                                    <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-lg text-center animate-in fade-in">
+                                        <p className="text-emerald-700 font-bold flex items-center justify-center gap-2">
+                                            <CheckCircle className="w-5 h-5"/> Voto Confirmado!
+                                        </p>
+                                        <p className="text-xs text-emerald-600 mt-1">Obrigado por participar.</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {poll.options.map((opt: any) => (
+                                            <button key={opt.id} onClick={() => handleVote(poll.id, opt.label)} className="w-full p-3 border rounded-lg bg-white hover:bg-slate-50 text-sm font-medium text-slate-700 text-left transition-colors border-slate-200 hover:border-emerald-300 active:bg-emerald-50 flex justify-between items-center group">
+                                                <span>{opt.label}</span>
+                                                <div className="flex items-center gap-2">
+                                                    {canManage && <span className="text-xs text-slate-400 font-mono bg-slate-100 px-1 rounded">{getVoteCount(poll, opt.id)}</span>}
+                                                    <span className="hidden group-hover:inline text-emerald-500 text-xs font-bold">Votar</span>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                                </>
                             ) : (
-                                <div className="p-4 bg-slate-50 rounded-lg text-center text-slate-500 text-sm">
-                                    Votação encerrada. Baixe o relatório para ver os resultados.
+                                <div className="p-4 bg-slate-50 rounded-lg">
+                                    <div className="text-center text-slate-500 text-sm mb-3">Votação encerrada.</div>
+                                    <div className="space-y-2">
+                                        {poll.options.map((opt: any) => (
+                                            <div key={opt.id} className="flex justify-between text-sm text-slate-700 border-b border-slate-100 pb-1">
+                                                <span>{opt.label}</span>
+                                                <span className="font-bold">{getVoteCount(poll, opt.id)} votos</span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
                             
@@ -355,7 +417,7 @@ const Governance: React.FC = () => {
            </div>
        )}
 
-       {/* === COMMS === */}
+       {/* === COMMS (COMUNICADOS) === */}
        {activeTab === 'comms' && (
            <div className="space-y-6 animate-in fade-in">
                <div className="flex justify-between items-center">
@@ -367,38 +429,43 @@ const Governance: React.FC = () => {
                         </div>
                     </div>
                     {canManage && (
-                        <button onClick={() => { setIsEditing(false); setAnnForm({ title: '', content: '', priority: 'NORMAL', targetType: 'ALL', targetValue: '', requiresConfirmation: false }); setShowAnnModal(true); }} className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold flex items-center hover:bg-emerald-700 transition-colors shadow-sm">
+                        <button onClick={() => { setIsEditing(false); setAnnForm({ title: '', content: '', priority: 'NORMAL', targetType: 'ALL', targetValue: '', requiresConfirmation: false, autoArchiveDate: '' }); setShowAnnModal(true); }} className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold flex items-center hover:bg-emerald-700 transition-colors shadow-sm">
                             <Plus className="w-4 h-4 mr-2" /> Novo Comunicado
                         </button>
                     )}
                </div>
 
+               {/* MODAL COMUNICADO (Mantido) */}
                {showAnnModal && (
                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                        <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95">
-                            <h3 className="font-bold text-lg mb-4">{isEditing ? 'Editar Comunicado' : 'Novo Comunicado'}</h3>
-                            <form onSubmit={submitAnn} className="space-y-4">
-                                <input type="text" placeholder="Título" required className="w-full p-3 border rounded-lg" value={annForm.title} onChange={e => setAnnForm({...annForm, title: e.target.value})}/>
-                                <textarea placeholder="Conteúdo" required className="w-full p-3 border rounded-lg" rows={4} value={annForm.content} onChange={e => setAnnForm({...annForm, content: e.target.value})}/>
-                                <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-100">
-                                    <div className="flex-1 mr-4">
-                                        <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Prioridade</label>
-                                        <select className="w-full p-2 border rounded bg-white" value={annForm.priority} onChange={e => setAnnForm({...annForm, priority: e.target.value})}>
-                                            <option value="NORMAL">Normal</option>
-                                            <option value="HIGH">Alta Importância</option>
-                                        </select>
-                                    </div>
-                                    <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer pt-4">
-                                        <input type="checkbox" checked={annForm.requiresConfirmation} onChange={e => setAnnForm({...annForm, requiresConfirmation: e.target.checked})} className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"/> 
-                                        Exigir Leitura
-                                    </label>
-                                </div>
-                                <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-slate-100">
-                                    <button type="button" onClick={() => setShowAnnModal(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">Cancelar</button>
-                                    <button type="submit" className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700 shadow-sm">Salvar</button>
-                                </div>
-                            </form>
-                        </div>
+                       <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95">
+                           <h3 className="font-bold text-lg mb-4">{isEditing ? 'Editar Comunicado' : 'Novo Comunicado'}</h3>
+                           <form onSubmit={submitAnn} className="space-y-4">
+                               <input type="text" placeholder="Título" required className="w-full p-3 border rounded-lg" value={annForm.title} onChange={e => setAnnForm({...annForm, title: e.target.value})}/>
+                               <textarea placeholder="Conteúdo" required className="w-full p-3 border rounded-lg" rows={4} value={annForm.content} onChange={e => setAnnForm({...annForm, content: e.target.value})}/>
+                               <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                   <div className="flex-1 mr-4">
+                                       <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Prioridade</label>
+                                       <select className="w-full p-2 border rounded bg-white" value={annForm.priority} onChange={e => setAnnForm({...annForm, priority: e.target.value})}>
+                                           <option value="NORMAL">Normal</option>
+                                           <option value="HIGH">Alta Importância</option>
+                                       </select>
+                                   </div>
+                                   <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer pt-4">
+                                       <input type="checkbox" checked={annForm.requiresConfirmation} onChange={e => setAnnForm({...annForm, requiresConfirmation: e.target.checked})} className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"/> 
+                                       Exigir Leitura
+                                   </label>
+                               </div>
+                               <div>
+                                   <label className="text-xs font-bold text-slate-500 uppercase">Arquivar Automaticamente (Data)</label>
+                                   <input type="date" className="w-full p-3 border rounded-lg mt-1" value={annForm.autoArchiveDate} onChange={e => setAnnForm({...annForm, autoArchiveDate: e.target.value})}/>
+                               </div>
+                               <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-slate-100">
+                                   <button type="button" onClick={() => setShowAnnModal(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg">Cancelar</button>
+                                   <button type="submit" className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700 shadow-sm">Salvar</button>
+                               </div>
+                           </form>
+                       </div>
                    </div>
                )}
 
@@ -427,8 +494,21 @@ const Governance: React.FC = () => {
                            <p className="text-slate-600 mt-2 whitespace-pre-wrap text-sm leading-relaxed">{ann.content}</p>
                            
                            <div className="mt-4 pt-4 border-t border-slate-100/50 flex justify-between items-center">
-                               <div className="flex items-center gap-2 text-xs text-slate-400"><Eye size={14}/> {ann.readBy.length} leituras</div>
-                               {ann.requiresConfirmation && <span className="bg-slate-100 px-2 py-0.5 rounded text-slate-500 font-bold ml-2">Leitura Obrigatória</span>}
+                               {/* CONTADOR DE LEITURAS (Baseado na lista readBy) */}
+                               <div className="flex items-center gap-2 text-xs text-slate-400">
+                                   <Eye size={14}/> {ann.readBy ? ann.readBy.length : 0} leituras confirmadas
+                               </div>
+                               
+                               {ann.requiresConfirmation && !ann.isReadByCurrentUser && (
+                                   <button onClick={() => handleConfirmRead(ann.id)} className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1 rounded text-xs font-bold transition-colors border border-blue-200">
+                                       Confirmar Leitura
+                                   </button>
+                               )}
+                               {ann.isReadByCurrentUser && (
+                                   <div className="flex items-center gap-1 text-emerald-600 font-bold text-xs bg-emerald-50 px-2 py-1 rounded">
+                                       <CheckCircle size={12}/> Leitura Confirmada
+                                   </div>
+                               )}
                            </div>
                        </div>
                    ))}
@@ -442,7 +522,7 @@ const Governance: React.FC = () => {
            </div>
        )}
 
-       {/* === TAB: CALENDÁRIO === */}
+       {/* === TAB: CALENDÁRIO (Mantido igual) === */}
        {activeTab === 'calendar' && (
            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm animate-in fade-in">
                <div className="flex justify-between items-start mb-8">
@@ -485,7 +565,6 @@ const Governance: React.FC = () => {
                <div className="grid gap-4 max-w-4xl mx-auto">
                    {data.calendar.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map((evt, idx) => (
                        <div key={idx} className="bg-white rounded-lg border border-slate-200 flex overflow-hidden hover:shadow-md transition-all relative group">
-                           {/* AÇÕES DE GESTÃO PARA EVENTOS MANUAIS */}
                            {canManage && !['ASSEMBLY', 'BOOKING', 'POLL'].includes(evt.type) && (
                                <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                    <button onClick={() => openEdit('event', evt)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit2 size={16}/></button>
@@ -523,7 +602,7 @@ const Governance: React.FC = () => {
   );
 };
 
-// UI Helpers
+// UI Helpers (TabButton e KpiCard mantidos iguais)
 const TabButton = ({ active, onClick, icon: Icon, label, badge }: any) => (
     <button onClick={onClick} className={`flex-1 flex items-center justify-center py-3 px-4 text-sm font-medium transition-all relative ${active ? 'text-emerald-600 border-b-2 border-emerald-600' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}>
         <Icon className="w-4 h-4 mr-2" /> {label} {badge && <span className="ml-2 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{badge}</span>}
