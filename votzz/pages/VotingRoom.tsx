@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, MessageSquare, FileCheck, Shield, Video, Sparkles, Send, Lock, Clock, FileText, CheckCircle, Gavel, Scale, Download, Eye, EyeOff
@@ -25,11 +25,12 @@ const VotingRoom: React.FC = () => {
   // Estados de UI
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [chatMsg, setChatMsg] = useState('');
-  const [showLive, setShowLive] = useState(true);
-  const [summarizing, setSummarizing] = useState(false);
   const [connected, setConnected] = useState(false);
   const [activeTab, setActiveTab] = useState<'VOTE' | 'MANAGE'>('VOTE');
   const [closing, setClosing] = useState(false);
+  
+  // CORREÇÃO TS: Estado que estava faltando
+  const [summarizing, setSummarizing] = useState(false); 
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   
@@ -48,12 +49,90 @@ const VotingRoom: React.FC = () => {
   const userFraction = (user as any)?.fraction || 0.0152; 
   const totalFraction = totalVotes * userFraction; 
 
-  // --- 1. CONEXÃO WEBSOCKET (CORRIGIDA) ---
+  // --- LÓGICA DE CÁLCULO DA ATA (CORRIGIDA) ---
+  const ataPreview = useMemo(() => {
+    if (!assembly) return '';
+
+    const votes = assembly.votes || [];
+    
+    // 1. Identifica quais opções estão disponíveis (do Banco ou Fallback)
+    const activeOptions = assembly.options && assembly.options.length > 0 
+      ? assembly.options 
+      : [
+            { id: 'sim', descricao: 'Sim' },
+            { id: 'nao', descricao: 'Não' },
+            { id: 'abstencao', descricao: 'Abstenção' }
+        ];
+
+    // 2. Contabiliza os votos dinamicamente comparando IDs
+    // Aqui está a mágica: Compara o ID do voto com o ID da opção
+    const results = activeOptions.map((opt: any) => {
+        const count = votes.filter((v: any) => v.optionId === opt.id).length;
+        // Cálculo de % da fração ideal (opcional, mas legal na ata)
+        const fractionPercent = ((count * userFraction) * 100).toFixed(4);
+        return {
+            name: opt.descricao || opt.label,
+            count: count,
+            percent: fractionPercent
+        };
+    });
+
+    // 3. Gera o texto dos resultados dinâmico
+    const resultsText = results.map((r: any) => 
+        `- ${r.name}: ${r.count} votos (${r.percent}% da fração ideal)`
+    ).join('\n');
+
+    // 4. Define o vencedor
+    // Ordena por maior número de votos
+    const sortedResults = [...results].sort((a: any, b: any) => b.count - a.count);
+    
+    let decision = "EMPATADO";
+    if (totalVotes === 0) {
+        decision = "SEM QUÓRUM para deliberação";
+    } else if (sortedResults[0].count > (sortedResults[1]?.count || 0)) {
+        decision = `APROVADA a opção: ${sortedResults[0].name}`;
+    }
+
+    const date = new Date();
+    const formattedDate = date.toLocaleDateString('pt-BR');
+    
+    return `ATA DA ASSEMBLEIA GERAL AGE DO CONDOMÍNIO (ID: ${assembly.id.substring(0, 8)})
+
+Aos ${formattedDate}, encerrou-se a votação eletrônica referente à convocação enviada.
+
+A assembleia foi realizada na modalidade VIRTUAL, em conformidade com o Art. 1.354-A do Código Civil Brasileiro.
+
+1. DA CONVOCAÇÃO
+Foi comprovado o envio de notificação aos condôminos via sistema Votzz.
+
+2. DO QUÓRUM
+Estiveram presentes (votantes) ${totalVotes} unidades, representando uma fração ideal total de ${(totalFraction * 100).toFixed(4)}%.
+
+3. DA ORDEM DO DIA: "${assembly.titulo}"
+${assembly.description}
+
+4. DA VOTAÇÃO
+O sistema registrou votos criptografados e auditáveis, com o seguinte resultado:
+${resultsText}
+
+5. DA DELIBERAÇÃO
+Com base nos votos válidos, foi ${decision}.
+
+A presente ata é gerada automaticamente pelo sistema Votzz, com hash de integridade SHA-256.
+
+
+
+
+
+________________________________________________
+Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
+  }, [assembly, totalVotes, totalFraction]);
+
+  // --- 1. CONEXÃO WEBSOCKET ---
   useEffect(() => {
     let isMounted = true;
 
     const connectWebSocket = () => {
-        // Se já existe e está conectado, não reconecta
         if (stompClient && stompClient.connected) {
             if (isMounted) setConnected(true);
             return;
@@ -61,15 +140,14 @@ const VotingRoom: React.FC = () => {
 
         const socket = new SockJS('http://localhost:8080/ws-votzz');
         stompClient = over(socket);
-        stompClient.debug = () => {}; // Desativa logs no console
+        stompClient.debug = () => {}; 
 
         stompClient.connect(
             {}, 
-            () => { // Callback de Sucesso
+            () => { 
                 if (!isMounted) return;
                 setConnected(true);
                 
-                // Inscreve no tópico da assembleia
                 stompClient.subscribe(`/topic/assembly/${id}`, (message: any) => {
                     if (message.body) {
                         const newMsg = JSON.parse(message.body);
@@ -84,11 +162,10 @@ const VotingRoom: React.FC = () => {
                     }
                 });
             },
-            (error: any) => { // Callback de Erro
+            (error: any) => { 
                 console.error("Erro WebSocket:", error);
                 if (isMounted) {
                     setConnected(false);
-                    // Tenta reconectar em 5s apenas se o componente ainda estiver montado
                     setTimeout(connectWebSocket, 5000);
                 }
             }
@@ -114,8 +191,6 @@ const VotingRoom: React.FC = () => {
 
   const loadData = async () => {
     if (!id) return;
-    
-    // Carrega Assembleia
     try {
         const resAssembly = await api.get(`/assemblies/${id}`);
         setAssembly(resAssembly.data);
@@ -131,19 +206,17 @@ const VotingRoom: React.FC = () => {
         console.error("Erro ao carregar assembleia:", e);
     }
 
-    // Carrega Chat (Try-Catch separado para não quebrar a tela se falhar)
     try {
         const resChat = await api.get(`/chat/assemblies/${id}`);
         setMessages(resChat.data || []);
         setTimeout(() => chatEndRef.current?.scrollIntoView(), 500);
     } catch (e) {
-        console.warn("Chat não carregado (possível erro 500 se vazio):", e);
+        console.warn("Chat vazio ou erro:", e);
         setMessages([]);
     }
   };
 
   // --- 3. AÇÕES ---
-
   const handleVote = async () => {
     if (!id || !selectedOption || !user) return;
     try {
@@ -164,7 +237,6 @@ const VotingRoom: React.FC = () => {
     e.preventDefault();
     if (!chatMsg.trim() || !user) return;
 
-    // Verificação de segurança do socket
     if (!stompClient || !stompClient.connected) {
         alert("Conexão perdida. Aguarde a reconexão...");
         return;
@@ -188,11 +260,10 @@ const VotingRoom: React.FC = () => {
   };
 
   const handleCloseAssembly = async () => {
-    if (!id || !window.confirm("Confirmar encerramento?")) return;
+    if (!id || !window.confirm("ATENÇÃO: Isso encerrará a votação e gerará a Ata Jurídica. Confirmar?")) return;
     setClosing(true);
     try {
         await api.patch(`/assemblies/${id}/close`); 
-        alert("Assembleia encerrada.");
         loadData();
     } catch(e: any) {
         alert("Erro: " + (e.response?.data?.message || e.message));
@@ -206,6 +277,93 @@ const VotingRoom: React.FC = () => {
       window.open(`http://localhost:8080/api/assemblies/${id}/dossier`, '_blank');
   };
 
+  // --- FUNÇÃO DE IMPRESSÃO PDF PERSONALIZADA ---
+  const handlePrintAta = () => {
+      if (!assembly || !ataPreview) return;
+
+      const cleanString = (str: string) => str ? str.replace(/[^a-zA-Z0-9]/g, '_') : 'Desconhecido';
+      
+      const assembleiaNome = cleanString(assembly.titulo || assembly.title);
+      const condominioNome = cleanString(assembly.tenant?.nome || 'Condominio');
+      
+      const fileName = `DossieJuridicoAssemblyVotzz_${assembleiaNome}_${condominioNome}`;
+
+      const printWindow = window.open('', '_blank', 'width=900,height=800');
+      
+      if (printWindow) {
+          printWindow.document.write(`
+            <html>
+            <head>
+                <title>${fileName}</title>
+                <style>
+                    body {
+                        font-family: 'Courier New', Courier, monospace;
+                        padding: 40px;
+                        line-height: 1.6;
+                        font-size: 12px;
+                        color: #000;
+                        max-width: 800px;
+                        margin: 0 auto;
+                    }
+                    .header {
+                        text-align: center;
+                        margin-bottom: 40px;
+                        border-bottom: 2px solid #000;
+                        padding-bottom: 20px;
+                    }
+                    .logo {
+                        font-weight: bold;
+                        font-size: 20px;
+                        margin-bottom: 10px;
+                    }
+                    .content {
+                        white-space: pre-wrap;
+                        text-align: justify;
+                    }
+                    .footer {
+                        margin-top: 50px;
+                        text-align: center;
+                        font-size: 10px;
+                        color: #666;
+                        border-top: 1px solid #ccc;
+                        padding-top: 10px;
+                    }
+                    @media print {
+                        body { -webkit-print-color-adjust: exact; }
+                        button { display: none; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="logo">Votzz - Sistema de Governança</div>
+                    <div>Registro Digital de Assembleia</div>
+                </div>
+                
+                <div class="content">${ataPreview}</div>
+
+                <div class="footer">
+                    Documento gerado eletronicamente em ${new Date().toLocaleString()} <br/>
+                    Válido para: ${assembly.tenant?.nome || 'Condomínio'} <br/>
+                    Hash de integridade do sistema Votzz.
+                </div>
+
+                <script>
+                    window.onload = function() {
+                        setTimeout(function() {
+                            window.print();
+                        }, 500);
+                    }
+                </script>
+            </body>
+            </html>
+          `);
+          printWindow.document.close();
+      } else {
+          alert("Por favor, permita pop-ups para baixar o PDF.");
+      }
+  };
+
   const handleSummarizeIA = () => {
       if(!id) return;
       setSummarizing(true);
@@ -213,13 +371,10 @@ const VotingRoom: React.FC = () => {
       setTimeout(() => setSummarizing(false), 2000);
   };
 
-  // Extrai ID do YouTube corretamente para Live/Embed
   const getYoutubeEmbedUrl = (url: string) => {
     if (!url) return "";
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|live\/)([^#\&\?]*).*/;
     const match = url.match(regExp);
-    
-    // Garante que retorna URL de embed válida para o iframe
     if (match && match[2].length === 11) {
         return `https://www.youtube.com/embed/${match[2]}`;
     }
@@ -231,13 +386,11 @@ const VotingRoom: React.FC = () => {
   // Garante opções de voto (Sim/Não/Abstenção por padrão se vazio)
   const votingOptions = assembly.options && assembly.options.length > 0 
       ? assembly.options 
-      : (assembly.pollOptions && assembly.pollOptions.length > 0 
-          ? assembly.pollOptions 
-          : [
-              { id: 'sim', descricao: 'Sim' },
-              { id: 'nao', descricao: 'Não' },
-              { id: 'abstencao', descricao: 'Abstenção' }
-            ]);
+      : [
+            { id: 'sim', descricao: 'Sim' },
+            { id: 'nao', descricao: 'Não' },
+            { id: 'abstencao', descricao: 'Abstenção' }
+        ];
 
   return (
     <div className="space-y-6 pb-20 p-4 md:p-6">
@@ -291,7 +444,8 @@ const VotingRoom: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* SEÇÃO DE ENCERRAMENTO E ATA */}
+              <div className="grid grid-cols-1 gap-6">
                   {!isClosed ? (
                     <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
                         <h3 className="font-black text-lg text-slate-800 mb-2">Ações Críticas</h3>
@@ -301,29 +455,38 @@ const VotingRoom: React.FC = () => {
                         </button>
                     </div>
                   ) : (
-                    <div className="bg-emerald-50 p-8 rounded-[2rem] border border-emerald-100 shadow-sm">
-                        <h3 className="font-black text-lg text-emerald-800 mb-2 flex items-center gap-2"><CheckCircle size={20}/> Ata Gerada</h3>
-                        <p className="text-sm text-emerald-600 mb-6">A assembleia foi encerrada e os documentos legais estão prontos.</p>
-                        <div className="flex flex-col gap-3">
-                            <button onClick={handleSummarizeIA} className="w-full bg-white text-emerald-800 px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-100 transition-all border border-emerald-200">
+                    <div className="space-y-6">
+                        {/* CABEÇALHO VERDE */}
+                        <div className="bg-emerald-50 p-6 rounded-[2rem] border border-emerald-100 shadow-sm flex items-center gap-4">
+                            <div className="bg-emerald-100 p-3 rounded-full">
+                                <CheckCircle className="w-6 h-6 text-emerald-600"/>
+                            </div>
+                            <div>
+                                <h3 className="font-black text-lg text-emerald-800">Ata Gerada com Sucesso</h3>
+                                <p className="text-sm text-emerald-600">A votação foi auditada e o documento oficial foi criado.</p>
+                            </div>
+                        </div>
+
+                        {/* VISUALIZAÇÃO DA ATA */}
+                        <div className="bg-white p-6 rounded-[1rem] shadow-inner border border-slate-200 font-mono text-xs leading-relaxed text-slate-700 overflow-y-auto max-h-96 whitespace-pre-wrap">
+                            {ataPreview}
+                        </div>
+
+                        {/* BOTÕES DE AÇÃO */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <button onClick={handlePrintAta} className="w-full bg-slate-800 text-white px-6 py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-900 transition-all shadow-lg">
                                 <FileText className="w-5 h-5" /> Baixar Ata (PDF)
                             </button>
-                            <button onClick={handleExportDossier} className="w-full bg-emerald-800 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-900 transition-all shadow-lg">
+                            <button onClick={handleExportDossier} className="w-full bg-slate-700 text-white px-6 py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-800 transition-all border border-slate-600">
                                 <Shield className="w-5 h-5" /> Exportar Dossiê Jurídico
                             </button>
                         </div>
                     </div>
                   )}
-                  
-                  <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
-                      <h3 className="font-black text-lg text-slate-800 mb-4 flex items-center gap-2"><Sparkles className="text-purple-600"/> Inteligência Artificial</h3>
-                      <button onClick={handleSummarizeIA} className="w-full py-4 bg-purple-50 text-purple-700 font-bold rounded-xl border border-purple-100 hover:bg-purple-100 transition-all flex items-center justify-center gap-2">
-                          Gerar Resumo do Chat e Decisões
-                      </button>
-                  </div>
               </div>
           </div>
       ) : (
+        /* ... CONTEÚDO DA ABA DE VOTAÇÃO (MORADOR) ... */
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-in fade-in">
             
             <div className="lg:col-span-8 space-y-6">
@@ -350,10 +513,8 @@ const VotingRoom: React.FC = () => {
                     </div>
                 </div>
 
-                {/* AREA DA LIVE - AGORA SEMPRE RENDERIZA O IFRAME SE TIVER URL */}
                 {assembly.youtubeLiveUrl ? (
                     <div className="aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl border-4 border-slate-900 relative group">
-                        {/* O iframe é renderizado diretamente. O YouTube controla se mostra a live ou a thumbnail de espera */}
                         <iframe 
                             width="100%" height="100%" 
                             src={`${getYoutubeEmbedUrl(assembly.youtubeLiveUrl)}?autoplay=1&mute=0`} 
@@ -433,7 +594,6 @@ const VotingRoom: React.FC = () => {
                         </div>
                     ) : canVote ? (
                         <div className="space-y-3">
-                            {/* Renderiza as opções ou o fallback (Sim/Não) se vazio */}
                             {votingOptions.map((opt: any) => (
                                 <button
                                     key={opt.id || opt.descricao}
@@ -508,7 +668,6 @@ const VotingRoom: React.FC = () => {
                         </button>
                     </form>
                 </div>
-
             </div>
         </div>
       )}

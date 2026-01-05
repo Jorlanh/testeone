@@ -12,7 +12,7 @@ export interface LoginRequest {
 export interface User {
   id: string;
   nome: string;      
-  name: string;      // Compatibilidade com código legado
+  name?: string;     // Tornamos opcional para evitar erro se vier apenas 'nome'
   email: string;
   cpf?: string;      
   unidade?: string;  
@@ -58,7 +58,7 @@ export interface AdminDashboardStats {
   activeTenants: number;
   totalUsers: number;
   onlineUsers: number;
-  mrr: number; // Campo crítico (minúsculo) para o gráfico de receita e cards
+  mrr: number; 
   latencyMs?: number; 
 }
 
@@ -92,23 +92,33 @@ export enum AssemblyStatus {
 
 export interface Assembly {
   id: string;
-  title: string;
-  titulo?: string; // Compatibilidade
+  
+  // Campos de Texto (Aceita PT ou EN)
+  title?: string;        // Opcional: Backend pode mandar 'titulo'
+  titulo?: string;       // Opcional: Backend pode mandar 'title'
   description: string;
-  status: AssemblyStatus;
-  startDate: string;
-  dataInicio?: string;
-  endDate: string;
-  dataFim?: string;
+  
+  // Status Híbrido (Enum ou String crua para flexibilidade)
+  status: AssemblyStatus | string; 
+  
+  // Datas (Aceita PT ou EN)
+  startDate?: string;    // Opcional
+  dataInicio?: string;   // Opcional
+  endDate?: string;      // Opcional
+  dataFim?: string;      // Opcional
+  
   voteType?: VoteType;
   votePrivacy?: VotePrivacy;
   options?: { id: string; label: string }[];
   votes?: any[];
   pollVotes?: any[];
   pollOptions?: any[];
+  
+  // Links e Anexos
   linkVideoConferencia?: string;
   youtubeLiveUrl?: string; 
   relatorioIaUrl?: string;
+  anexoUrl?: string;     // Visto no log anterior
   attachments?: string[]; 
 }
 

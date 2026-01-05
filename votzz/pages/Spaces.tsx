@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  CalendarDays, MapPin, Users, Clock, Plus, CheckCircle, XCircle, AlertCircle, Wallet, Edit, Save, Trash2, Search, User as UserIcon, Upload, ImageIcon, Shield, ArrowRight
+  CalendarDays, MapPin, Users, Clock, Plus, CheckCircle, XCircle, AlertCircle, Wallet, Edit, Save, Trash2, Search, User as UserIcon, Upload, ImageIcon, Shield, ArrowRight, FileText
 } from 'lucide-react';
 import api from '../services/api'; 
 import { CommonArea, Booking, User, BookingStatus } from '../types';
@@ -13,7 +13,7 @@ interface SpacesProps {
 const Spaces: React.FC<SpacesProps> = () => {
   const { user } = useAuth();
   const [areas, setAreas] = useState<CommonArea[]>([]);
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]); 
   const [selectedArea, setSelectedArea] = useState<CommonArea | null>(null);
   const [activeTab, setActiveTab] = useState<'areas' | 'my-bookings' | 'manage'>('areas');
   
@@ -30,6 +30,9 @@ const Spaces: React.FC<SpacesProps> = () => {
 
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // Estados de Upload de Comprovante
+  const [uploadingBookingId, setUploadingBookingId] = useState<string | null>(null);
 
   // --- GESTÃO DE ÁREAS (ADM) ---
   const [isAddingArea, setIsAddingArea] = useState(false);
@@ -59,7 +62,7 @@ const Spaces: React.FC<SpacesProps> = () => {
     try {
       const [areasData, bookingsData] = await Promise.all([
         api.get('/facilities/areas'),
-        api.get('/facilities/bookings')
+        api.get('/facilities/bookings') 
       ]);
       setAreas(areasData.data || areasData);
       setBookings(bookingsData.data || bookingsData);
@@ -69,7 +72,7 @@ const Spaces: React.FC<SpacesProps> = () => {
     }
   };
 
-  // --- LÓGICA DE VALIDAÇÃO ---
+  // --- LÓGICA DE VALIDAÇÃO (BLOQUEIO DE DATA) ---
   const isDateBlocked = (areaId: string, date: string) => {
     return bookings.some(b => 
       b.areaId === areaId && 
@@ -87,8 +90,9 @@ const Spaces: React.FC<SpacesProps> = () => {
     if (startTime < "08:00" || endTime > "22:00") return "O horário permitido é das 08:00 às 22:00.";
     if (startTime >= endTime) return "O horário de início deve ser anterior ao fim.";
     
+    // VERIFICA SE JÁ EXISTE RESERVA NA DATA ESCOLHIDA
     if (selectedArea && isDateBlocked(selectedArea.id, date)) {
-      return "Esta data já está reservada por outro morador. Por favor, escolha outro dia.";
+      return "DATA INDISPONÍVEL: Já existe uma reserva (confirmada ou em análise) para este dia.";
     }
 
     return null;
@@ -96,7 +100,6 @@ const Spaces: React.FC<SpacesProps> = () => {
 
   // --- ACTIONS ---
 
-  // NOVO: Função para Upload de Imagem (CORRIGIDA)
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -106,9 +109,7 @@ const Spaces: React.FC<SpacesProps> = () => {
     formData.append('file', file);
 
     try {
-      // CORREÇÃO: Removido o header manual. Axios cuida do boundary.
       const response = await api.post('/facilities/areas/upload', formData);
-      
       setAreaForm(prev => ({ ...prev, imageUrl: response.data.url }));
       setSuccessMsg("Imagem carregada com sucesso!");
     } catch (error: any) {
@@ -117,6 +118,26 @@ const Spaces: React.FC<SpacesProps> = () => {
       setErrorMsg(msg);
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  // Função para upload de COMPROVANTE DE PAGAMENTO
+  const handleReceiptUpload = async (e: React.ChangeEvent<HTMLInputElement>, bookingId: string) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingBookingId(bookingId);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        await api.post(`/facilities/bookings/${bookingId}/receipt`, formData);
+        alert("Comprovante enviado! Sua reserva ficará retida para análise do síndico.");
+        loadData(); // Recarrega para atualizar status
+    } catch (error: any) {
+        alert("Erro ao enviar comprovante: " + (error.response?.data?.message || error.message));
+    } finally {
+        setUploadingBookingId(null);
     }
   };
 
@@ -133,7 +154,7 @@ const Spaces: React.FC<SpacesProps> = () => {
     }
 
     const price = selectedArea.price ?? 0;
-    const confirmMsg = `Confirmar Reserva: ${selectedArea.name}\nValor: R$ ${price.toFixed(2)}\nData: ${new Date(bookingForm.date).toLocaleDateString()}\n\nAo confirmar, você será redirecionado para o pagamento Asaas (Pix/Boleto). A reserva só será efetivada após a compensação.`;
+    const confirmMsg = `Confirmar Reserva: ${selectedArea.name}\nValor: R$ ${price.toFixed(2)}\nData: ${new Date(bookingForm.date).toLocaleDateString()}\n\nAo confirmar, a data ficará bloqueada. Você terá 10 minutos para pagar o Pix ou enviar o comprovante.`;
     
     if(!window.confirm(confirmMsg)) return;
 
@@ -145,12 +166,12 @@ const Spaces: React.FC<SpacesProps> = () => {
         billingType: 'PIX' 
       });
       
-      setSuccessMsg("Solicitação enviada! Aguardando confirmação do pagamento pelo Asaas.");
-      loadData();
+      setSuccessMsg("Reserva iniciada! Vá em 'Minhas Reservas' para pagar ou enviar o comprovante.");
+      loadData(); 
       setSelectedArea(null);
       setActiveTab('my-bookings');
     } catch (e: any) {
-      setErrorMsg(e.response?.data?.message || "Erro ao processar reserva. Tente novamente.");
+      setErrorMsg(e.response?.data?.message || e.response?.data || "Erro ao processar reserva. Tente novamente.");
     }
   };
 
@@ -187,9 +208,15 @@ const Spaces: React.FC<SpacesProps> = () => {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'APPROVED': 
-      case 'CONFIRMED': return <span className="bg-emerald-100 text-emerald-800 text-xs px-2 py-1 rounded font-bold border border-emerald-200">Confirmado</span>;
-      case 'PENDING': return <span className="bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded font-bold border border-amber-200">Aguardando Pagto</span>;
-      case 'REJECTED': return <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded font-bold border border-red-200">Cancelado/Rejeitado</span>;
+      case 'CONFIRMED': return <span className="bg-emerald-100 text-emerald-800 text-xs px-2 py-1 rounded font-bold border border-emerald-200 flex items-center gap-1"><CheckCircle size={12}/> Confirmado</span>;
+      
+      case 'PENDING': return <span className="bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded font-bold border border-amber-200 flex items-center gap-1"><Clock size={12}/> Aguardando Pagto</span>;
+      
+      case 'UNDER_ANALYSIS': return <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded font-bold border border-blue-200 flex items-center gap-1"><FileText size={12}/> Em Análise</span>;
+      
+      case 'REJECTED': 
+      case 'CANCELLED': return <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded font-bold border border-red-200 flex items-center gap-1"><XCircle size={12}/> Cancelado</span>;
+      
       default: return <span className="bg-slate-100 text-slate-500 text-xs px-2 py-1 rounded font-bold">{status}</span>;
     }
   };
@@ -197,7 +224,6 @@ const Spaces: React.FC<SpacesProps> = () => {
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-20">
       
-      {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Espaços e Reservas</h1>
@@ -267,7 +293,7 @@ const Spaces: React.FC<SpacesProps> = () => {
                           <ul className="list-disc list-inside space-y-1">
                               <li>Horário permitido: 08h às 22h.</li>
                               <li>Pagamento via Asaas (Pix/Boleto).</li>
-                              <li>Não é permitido agendar data retroativa.</li>
+                              <li>Se não pagar em 10min, envie o comprovante para segurar a vaga.</li>
                           </ul>
                         </div>
 
@@ -307,7 +333,7 @@ const Spaces: React.FC<SpacesProps> = () => {
                         </div>
 
                         <button type="submit" className="w-full bg-emerald-600 text-white py-3.5 rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 mt-4">
-                            <Wallet size={18}/> Ir para Pagamento
+                            <Wallet size={18}/> Reservar e Pagar
                         </button>
                     </div>
                   </form>
@@ -348,7 +374,7 @@ const Spaces: React.FC<SpacesProps> = () => {
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
-                              <label className="text-xs text-slate-400 mb-1 block">Opção A: Link Externo (Google Drive, etc)</label>
+                              <label className="text-xs text-slate-400 mb-1 block">Opção A: Link Externo</label>
                               <input type="text" placeholder="https://..." value={areaForm.imageUrl} onChange={e => setAreaForm({...areaForm, imageUrl: e.target.value})} className="p-3 border rounded-lg w-full text-sm" />
                           </div>
                           
@@ -377,6 +403,7 @@ const Spaces: React.FC<SpacesProps> = () => {
                 </form>
               )}
 
+              {/* LISTAGEM DAS ÁREAS NA ABA DE GESTÃO - AQUI ESTAVA O PROBLEMA */}
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {areas.map(area => (
                   <div key={area.id} className="p-4 border rounded-xl flex justify-between items-center bg-white hover:border-emerald-200 group">
@@ -395,6 +422,7 @@ const Spaces: React.FC<SpacesProps> = () => {
                     </div>
                   </div>
                 ))}
+                {areas.length === 0 && <p className="text-slate-400 text-sm col-span-3 text-center py-4">Nenhuma área cadastrada.</p>}
               </div>
            </div>
 
@@ -412,7 +440,8 @@ const Spaces: React.FC<SpacesProps> = () => {
                        <th className="px-6 py-4">Morador</th>
                        <th className="px-6 py-4">Local</th>
                        <th className="px-6 py-4">Data/Hora</th>
-                       <th className="px-6 py-4">Status Pagto</th>
+                       <th className="px-6 py-4">Comprovante</th>
+                       <th className="px-6 py-4">Status</th>
                    </tr>
                  </thead>
                  <tbody className="divide-y divide-slate-100">
@@ -432,12 +461,17 @@ const Spaces: React.FC<SpacesProps> = () => {
                                <p className="font-medium text-slate-800">{new Date(booking.date).toLocaleDateString()}</p>
                                <p className="text-xs text-slate-500">{booking.startTime} - {booking.endTime}</p>
                            </td>
+                           <td className="px-6 py-4">
+                                {(booking as any).receiptUrl ? (
+                                    <a href={(booking as any).receiptUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-xs flex items-center gap-1"><FileText size={12}/> Ver</a>
+                                ) : <span className="text-slate-300 text-xs">-</span>}
+                           </td>
                            <td className="px-6 py-4">{getStatusBadge(booking.status)}</td>
                          </tr>
                        )
                    })}
                    {bookings.length === 0 && (
-                       <tr><td colSpan={4} className="p-8 text-center text-slate-400">Nenhuma reserva registrada.</td></tr>
+                       <tr><td colSpan={5} className="p-8 text-center text-slate-400">Nenhuma reserva registrada.</td></tr>
                    )}
                  </tbody>
                </table>
@@ -449,23 +483,48 @@ const Spaces: React.FC<SpacesProps> = () => {
       {activeTab === 'my-bookings' && (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
            <div className="p-6 border-b border-slate-100 bg-slate-50">
-               <h3 className="font-bold text-slate-800">Histórico de Agendamentos</h3>
+               <h3 className="font-bold text-slate-800">Minhas Reservas & Pagamentos</h3>
            </div>
            <table className="w-full text-sm text-left">
              <thead className="bg-white text-slate-500 border-b border-slate-200 uppercase text-xs">
-               <tr><th className="px-6 py-4">Área</th><th className="px-6 py-4">Data</th><th className="px-6 py-4">Horário</th><th className="px-6 py-4">Status</th></tr>
+               <tr><th className="px-6 py-4">Área</th><th className="px-6 py-4">Data</th><th className="px-6 py-4">Ação / Status</th></tr>
              </thead>
              <tbody className="divide-y divide-slate-100">
                {myBookings.map(booking => (
                  <tr key={booking.id} className="hover:bg-slate-50">
                    <td className="px-6 py-4 font-bold text-slate-800">{areas.find(a => a.id === booking.areaId)?.name}</td>
-                   <td className="px-6 py-4 text-slate-600">{new Date(booking.date).toLocaleDateString()}</td>
-                   <td className="px-6 py-4 text-slate-600">{booking.startTime} - {booking.endTime}</td>
-                   <td className="px-6 py-4">{getStatusBadge(booking.status)}</td>
+                   <td className="px-6 py-4">
+                       <p className="text-slate-800 font-medium">{new Date(booking.date).toLocaleDateString()}</p>
+                       <p className="text-xs text-slate-500">{booking.startTime} - {booking.endTime}</p>
+                   </td>
+                   <td className="px-6 py-4">
+                       <div className="flex items-center gap-4">
+                           {getStatusBadge(booking.status)}
+                           
+                           {/* AÇÃO: ENVIAR COMPROVANTE SE ESTIVER PENDENTE */}
+                           {booking.status === 'PENDING' && (
+                               <div className="relative group">
+                                   <input 
+                                       type="file" 
+                                       id={`upload-${booking.id}`} 
+                                       className="hidden" 
+                                       onChange={(e) => handleReceiptUpload(e, booking.id)}
+                                       disabled={uploadingBookingId === booking.id}
+                                   />
+                                   <label htmlFor={`upload-${booking.id}`} className={`cursor-pointer text-xs font-bold px-3 py-1.5 rounded border transition-all flex items-center gap-1 ${uploadingBookingId === booking.id ? 'bg-slate-100 text-slate-400' : 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'}`}>
+                                       {uploadingBookingId === booking.id ? 'Enviando...' : <><Upload size={12}/> Enviar Comprovante</>}
+                                   </label>
+                                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-800 text-white text-[10px] rounded hidden group-hover:block text-center">
+                                       Envie o comprovante para garantir a reserva enquanto o Pix compensa.
+                                   </div>
+                               </div>
+                           )}
+                       </div>
+                   </td>
                  </tr>
                ))}
                {myBookings.length === 0 && (
-                   <tr><td colSpan={4} className="p-8 text-center text-slate-400">Você ainda não tem reservas.</td></tr>
+                   <tr><td colSpan={3} className="p-8 text-center text-slate-400">Você ainda não tem reservas.</td></tr>
                )}
              </tbody>
            </table>
