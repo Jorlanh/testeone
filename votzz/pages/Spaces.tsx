@@ -6,12 +6,11 @@ import api from '../services/api';
 import { CommonArea, Booking, User, BookingStatus } from '../types';
 import { useAuth } from '../context/AuthContext';
 
-interface SpacesProps {
-  user: User | null;
-}
+// REMOVED: interface SpacesProps { user: User | null; } <-- This was causing the error
 
-const Spaces: React.FC<SpacesProps> = () => {
-  const { user } = useAuth();
+// CHANGED: Removed <SpacesProps> generic
+const Spaces: React.FC = () => {
+  const { user } = useAuth(); // User comes from context, not props
   const [areas, setAreas] = useState<CommonArea[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]); 
   const [selectedArea, setSelectedArea] = useState<CommonArea | null>(null);
@@ -403,7 +402,7 @@ const Spaces: React.FC<SpacesProps> = () => {
                 </form>
               )}
 
-              {/* LISTAGEM DAS ÁREAS NA ABA DE GESTÃO - AQUI ESTAVA O PROBLEMA */}
+              {/* LISTAGEM DAS ÁREAS NA ABA DE GESTÃO */}
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {areas.map(area => (
                   <div key={area.id} className="p-4 border rounded-xl flex justify-between items-center bg-white hover:border-emerald-200 group">

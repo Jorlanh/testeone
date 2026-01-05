@@ -57,7 +57,7 @@ function App() {
     <AuthProvider>
       <Router>
         <Routes>
-          {/* --- ROTAS PÚBLICAS --- */}
+          {/* --- ROTAS PÚBLICAS (Ainda esperam user={null}) --- */}
           <Route path="/" element={<LandingPage user={null} />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/governance-sales" element={<GovernanceSales user={null} />} />
@@ -99,15 +99,16 @@ function App() {
             </PrivateRoute>
           } />
 
+          {/* Governance e Spaces NÃO recebem props, pois usam useAuth interno */}
           <Route path="/governance" element={
             <PrivateRoute allowedRoles={['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER']}>
-              <Layout><Governance user={null} /></Layout>
+              <Layout><Governance /></Layout> 
             </PrivateRoute>
           } />
 
           <Route path="/spaces" element={
             <PrivateRoute allowedRoles={['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER']}>
-              <Layout><Spaces user={null}/></Layout>
+              <Layout><Spaces /></Layout>
             </PrivateRoute>
           } />
 
