@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
-// Defina esses tipos no seu arquivo de tipos se ainda não existirem
-// import { AdminDashboardStats, User } from '../../types'; 
 import { 
   Users, Building, DollarSign, Tag, Plus, Save, 
   ShieldAlert, LayoutDashboard, Search, Folder, UserPlus, Trash2, Activity, UserCircle, Edit, MapPin, X, CalendarClock, Mail, Lock, FileText,
@@ -9,14 +7,13 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
-// Interfaces locais para garantir que o código compile se você não tiver o arquivo de types
+// Interfaces locais atualizadas para corresponder ao Backend
 interface AdminDashboardStats {
     totalUsers: number;
     onlineUsers: number;
     totalTenants: number;
     activeTenants: number;
     mrr: number;
-    latency: number;
 }
 
 export default function SuperAdminDashboard() {
@@ -162,7 +159,7 @@ function AdminsList({ currentUser }: { currentUser: any }) {
     );
 }
 
-// 3. TENANTS MANAGER
+// 3. TENANTS MANAGER (COM BOTÃO DE EXCLUIR)
 function TenantsManager() {
     const [tenants, setTenants] = useState<any[]>([]);
     const [editingTenant, setEditingTenant] = useState<any>(null);
@@ -185,20 +182,32 @@ function TenantsManager() {
     const handleUpdate = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            // Prepara o payload para garantir que o plano e status vão corretamente
             const payload = {
                 ...editingTenant,
-                // Se plano for objeto, pega o nome, se for string, mantém. Importante para o backend.
                 plano: typeof editingTenant.plano === 'object' ? editingTenant.plano?.nome : editingTenant.plano,
                 ativo: editingTenant.ativo === true || editingTenant.ativo === 'true'
             };
-
             await api.put(`/admin/tenants/${editingTenant.id}`, payload);
             alert("Condomínio atualizado com sucesso!"); 
             setEditingTenant(null); 
             load();
         } catch (e: any) { 
             alert(e.response?.data?.error || "Erro ao atualizar condomínio."); 
+        }
+    };
+
+    // --- NOVA FUNÇÃO DE EXCLUIR ---
+    const handleDeleteTenant = async (id: string, nome: string) => {
+        if (confirm(`ATENÇÃO: Deseja realmente desativar (excluir) o condomínio ${nome}? \n\nIsso bloqueará o acesso de todos os moradores.`)) {
+            try {
+                // Chama o novo endpoint DELETE em TenantController
+                await api.delete(`/tenants/${id}`); 
+                alert("Condomínio desativado (Soft Delete) com sucesso.");
+                load();
+            } catch (error) {
+                console.error(error);
+                alert("Erro ao excluir condomínio. Verifique as permissões.");
+            }
         }
     };
 
@@ -312,9 +321,14 @@ function TenantsManager() {
                             {t.cidade && <p className="text-xs text-slate-500 font-bold flex items-center gap-1"><MapPin size={12}/> {t.cidade}/{t.estado}</p>}
                         </div>
                     </div>
-                    <button onClick={() => setEditingTenant(t)} className="flex items-center gap-2 text-slate-500 hover:text-white hover:bg-blue-600 font-bold text-xs bg-slate-100 px-5 py-3 rounded-xl transition-all self-start md:self-center">
-                        <Edit size={16}/> Gerenciar
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => setEditingTenant(t)} className="flex items-center gap-2 text-slate-500 hover:text-white hover:bg-blue-600 font-bold text-xs bg-slate-100 px-5 py-3 rounded-xl transition-all">
+                            <Edit size={16}/> Gerenciar
+                        </button>
+                        <button onClick={() => handleDeleteTenant(t.id, t.nome)} className="flex items-center gap-2 text-slate-400 hover:text-white hover:bg-red-500 font-bold text-xs bg-slate-50 px-4 py-3 rounded-xl transition-all" title="Desativar Condomínio">
+                            <Trash2 size={16}/>
+                        </button>
+                    </div>
                 </div>
             ))}
         </div>
@@ -619,7 +633,7 @@ function ManualCondoCreator() {
                     <input required type={showPassword ? "text" : "password"} placeholder="Confirmar" value={form.confirm} onChange={e => setForm({...form, confirm: e.target.value})} className="w-full p-4 bg-white rounded-2xl font-bold pr-10" />
                 </div>
                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-[-40px] top-4 text-slate-400">
-                     {showPassword ? <EyeOff /> : <Eye />}
+                      {showPassword ? <EyeOff /> : <Eye />}
                 </button>
             </div>
         </div>
@@ -663,7 +677,7 @@ function CreateAdminForm() {
     );
 }
 
-// 8. STATS VIEW
+// 8. STATS VIEW (CORRIGIDO PARA MOSTRAR OS DADOS DO BACKEND)
 function StatsView() {
   const [stats, setStats] = useState<AdminDashboardStats | null>(null);
   const [latency, setLatency] = useState(0);
@@ -676,7 +690,7 @@ function StatsView() {
         const res = await api.get('/admin/dashboard-stats');
         if (isMounted) { 
             setLatency(Date.now() - start); 
-            // Força atualização mesmo se for 0, mas evita setar null se vier undefined
+            // Agora o TypeScript sabe que os campos totalTenants, activeTenants e mrr existem
             if(res.data) setStats(res.data);
         }
       } catch (e) { console.error(e); }
@@ -699,6 +713,7 @@ function StatsView() {
         <p className={`text-4xl font-black ${latency > 250 ? 'text-red-400' : 'text-emerald-400'}`}>{latency}ms</p>
       </div>
       
+      {/* CORREÇÃO: Usando stats.totalTenants vindo do backend */}
       <StatCard 
         icon={<Building />} 
         color="blue" 
@@ -713,6 +728,7 @@ function StatsView() {
         value={stats ? stats.totalUsers : '-'} 
       />
       
+      {/* CORREÇÃO: Usando stats.mrr vindo do backend */}
       <StatCard 
         icon={<DollarSign />} 
         color="emerald" 
