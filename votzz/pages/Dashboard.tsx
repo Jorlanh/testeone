@@ -11,7 +11,7 @@ import { Assembly, User } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { SubscriptionStatus } from '../components/SubscriptionStatus';
 
-// --- TIPAGEM CORRIGIDA PARA BATER COM O JAVA ---
+// --- TIPAGEM ---
 interface AuditLog {
   id: string;
   action: string;
@@ -48,7 +48,6 @@ const Dashboard: React.FC = () => {
   const [reports, setReports] = useState<FinancialReport[]>([]);
   const [expirationDate, setExpirationDate] = useState<string | null>(null);
   
-  // --- NOVOS ESTADOS PARA DADOS REAIS DO BACKEND ---
   const [realStats, setRealStats] = useState({
     totalUsers: 0,
     activeAssemblies: 0,
@@ -66,7 +65,7 @@ const Dashboard: React.FC = () => {
   const [bankForm, setBankForm] = useState<BankInfo>({ bankName: '', agency: '', account: '', pixKey: '', asaasWalletId: '' });
   const [userForm, setUserForm] = useState({ nome: '', email: '', cpf: '', whatsapp: '', unidade: '', bloco: '', role: 'MORADOR', password: '' });
   
-  const [reportForm, setReportForm] = useState({ month: new Date().toLocaleString('pt-BR', { month: 'long' }), year: new Date().getFullYear() });
+  const [reportForm, setReportForm] = useState({ month: 'Janeiro', year: new Date().getFullYear() });
 
   const isManager = user?.role === 'MANAGER' || user?.role === 'SINDICO' || user?.role === 'ADM_CONDO';
   const displayName = user?.nome || user?.email?.split('@')[0] || 'Morador';
@@ -81,28 +80,29 @@ const Dashboard: React.FC = () => {
           api.get('/assemblies'),             
           api.get('/financial/balance'),      
           api.get('/users'),                 
-          api.get('/tenants/my-subscription'), 
+          api.get('/tenants/my-subscription').catch(() => ({ data: null })), 
           api.get('/tenants/audit-logs'),     
           api.get('/financial/reports'),      
           api.get('/tenants/bank-info'),
-          api.get('/condo/dashboard/stats') 
+          api.get('/condo/dashboard/stats').catch(() => ({ data: null }))
         ]);
 
         if (results[0].status === 'fulfilled') {
             const data = Array.isArray(results[0].value.data) ? results[0].value.data : [];
-            console.log("Dashboard - Assembleias recebidas:", data);
             setAssemblies(data);
         }
         if (results[1].status === 'fulfilled') setFinancial(results[1].value.data || { balance: 0, lastUpdate: 'N/A' });
         if (results[2].status === 'fulfilled') setCondoUsers(Array.isArray(results[2].value.data) ? results[2].value.data : []);
-        if (results[3].status === 'fulfilled') setExpirationDate(results[3].value.data?.expirationDate);
+        
+        if (results[3].status === 'fulfilled' && results[3].value.data) {
+            setExpirationDate(results[3].value.data.expirationDate);
+        }
+
         if (results[4].status === 'fulfilled') setAuditLogs(results[4].value.data || []);
         if (results[5].status === 'fulfilled') setReports(results[5].value.data || []);
         if (results[6].status === 'fulfilled') setBankForm(results[6].value.data || bankForm);
         
-        // ATUALIZA OS CARDS COM DADOS CALCULADOS PELO BACKEND (REAIS)
-        if (results[7].status === 'fulfilled') {
-          console.log("Dashboard - Stats Reais:", results[7].value.data);
+        if (results[7].status === 'fulfilled' && results[7].value.data) {
           setRealStats(results[7].value.data);
         }
     } catch (error) {
@@ -234,7 +234,17 @@ const Dashboard: React.FC = () => {
         alert("Relatório adicionado com sucesso!");
         loadData();
         e.target.value = ''; 
-    } catch (error) { alert("Erro ao enviar relatório."); }
+    } catch (error: any) { 
+        console.error("Erro upload:", error.response?.data);
+        const msg = error.response?.data?.message || "";
+        
+        // Tratamento de erro específico da AWS para orientar você
+        if (msg.includes("AWS Access Key Id") || error.response?.status === 500) {
+             alert("Erro de configuração no servidor (AWS S3 inválido). O arquivo não pôde ser salvo na nuvem.");
+        } else {
+             alert("Erro ao enviar relatório: " + (msg || "Verifique o arquivo."));
+        }
+    }
   };
 
   return (
@@ -354,9 +364,9 @@ const Dashboard: React.FC = () => {
                     <td className="py-4 px-2 text-slate-500 text-xs">{u.email}</td>
                     <td className="py-4 px-2 text-slate-600 font-mono">{u.unidade || '-'} / {u.bloco || '-'}</td>
                     <td className="py-4 px-2">
-                         <span className={`text-[10px] font-black px-2 py-1 rounded uppercase ${u.role === 'SINDICO' ? 'bg-purple-100 text-purple-700' : u.role === 'ADM_CONDO' ? 'bg-blue-100 text-blue-700' : u.role === 'ADMIN' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>
-                             {u.role === 'ADM_CONDO' ? 'Admin Condo' : u.role === 'ADMIN' ? 'Votzz Admin' : u.role}
-                         </span>
+                          <span className={`text-[10px] font-black px-2 py-1 rounded uppercase ${u.role === 'SINDICO' ? 'bg-purple-100 text-purple-700' : u.role === 'ADM_CONDO' ? 'bg-blue-100 text-blue-700' : u.role === 'ADMIN' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>
+                              {u.role === 'ADM_CONDO' ? 'Admin Condo' : u.role === 'ADMIN' ? 'Votzz Admin' : u.role}
+                          </span>
                     </td>
                     <td className="py-4 px-2 text-right">
                         {u.role !== 'ADMIN' && (
@@ -379,13 +389,13 @@ const Dashboard: React.FC = () => {
           { title: 'Total Usuários', value: realStats.totalUsers || condoUsers.length, icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-100' },
         ].map((stat, idx) => (
           <div key={idx} className="bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
-             <div>
+              <div>
                 <p className="text-slate-500 text-xs font-bold uppercase">{stat.title}</p>
                 <h3 className="text-2xl font-black text-slate-800 mt-1">{stat.value}</h3>
-             </div>
-             <div className={`${stat.bg} p-3 rounded-lg`}>
+              </div>
+              <div className={`${stat.bg} p-3 rounded-lg`}>
                 <stat.icon className={`h-6 w-6 ${stat.color}`} />
-             </div>
+              </div>
           </div>
         ))}
       </div>
@@ -396,8 +406,9 @@ const Dashboard: React.FC = () => {
             <h2 className="text-lg font-bold text-slate-800">Evolução de Participação</h2>
           </div>
           
-          <div className="w-full h-[300px] min-w-full relative">
-            <ResponsiveContainer width="100%" height="100%" minHeight={300}>
+          {/* --- CORREÇÃO DO ERRO DO GRÁFICO (RECHARTS WIDTH) --- */}
+          <div style={{ width: '100%', height: 300 }}>
+            <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData.length > 0 ? chartData : [{name: 'Jan', votos: 0}]} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorVotos" x1="0" y1="0" x2="0" y2="1">

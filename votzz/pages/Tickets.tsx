@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  MessageSquare, Plus, CheckCircle, Clock, XCircle, User, MapPin, Send, AlertTriangle
+  MessageSquare, Plus, Clock, User, MapPin, Send
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
-// Tipagem atualizada
 interface Message {
   id: string;
   senderName: string;
@@ -32,8 +31,9 @@ const Tickets: React.FC = () => {
   const { user } = useAuth();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false); 
   const [newTicket, setNewTicket] = useState({ title: '', description: '' });
-  const [activeTicketId, setActiveTicketId] = useState<string | null>(null); // Qual chamado está expandido
+  const [activeTicketId, setActiveTicketId] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -57,13 +57,39 @@ const Tickets: React.FC = () => {
 
   const handleCreateTicket = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
+
     try {
-      await api.post('/tickets', { ...newTicket });
+      const payload = { 
+          title: newTicket.title,
+          description: newTicket.description,
+          priority: 'LOW',
+          status: 'OPEN'
+      };
+
+      await api.post('/tickets', payload);
+      
       setIsCreating(false);
       setNewTicket({ title: '', description: '' });
       loadTickets();
-    } catch (error) {
-      alert("Erro ao abrir chamado.");
+      alert("Chamado aberto com sucesso!");
+
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.message || error.response?.data?.error || "";
+      
+      // Tratamento para erro de serialização do Java (caso ocorra)
+      if (errorMsg.includes("Could not write JSON") || errorMsg.includes("initialize proxy")) {
+           setIsCreating(false);
+           setNewTicket({ title: '', description: '' });
+           loadTickets();
+      } else {
+           console.error("Erro detalhado:", error.response?.data);
+           alert("Erro ao abrir chamado: " + (errorMsg || "Verifique os dados."));
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -72,7 +98,7 @@ const Tickets: React.FC = () => {
     try {
       await api.post(`/tickets/${ticketId}/messages`, { message: newMessage });
       setNewMessage('');
-      loadTickets(); // Recarrega para ver a nova mensagem
+      loadTickets();
     } catch (error) {
       alert("Erro ao enviar mensagem.");
     }
@@ -96,7 +122,6 @@ const Tickets: React.FC = () => {
       }
   }
 
-  // Cores de Status
   const getStatusColor = (status: string) => {
     const map: Record<string, string> = {
       'OPEN': 'bg-blue-100 text-blue-800 border-blue-200',
@@ -108,7 +133,6 @@ const Tickets: React.FC = () => {
     return map[status] || 'bg-gray-100';
   };
 
-  // Cores de Prioridade
   const getPriorityBadge = (priority: string) => {
     const map: Record<string, string> = {
       'LOW': 'text-slate-500 bg-slate-100',
@@ -144,6 +168,7 @@ const Tickets: React.FC = () => {
                 onChange={e => setNewTicket({...newTicket, title: e.target.value})} 
                 className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 placeholder="Ex: Vazamento na garagem"
+                disabled={isSubmitting}
               />
             </div>
             <div>
@@ -153,10 +178,21 @@ const Tickets: React.FC = () => {
                 onChange={e => setNewTicket({...newTicket, description: e.target.value})} 
                 className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 placeholder="Detalhe o ocorrido..."
+                disabled={isSubmitting}
               />
             </div>
             <div className="flex justify-end">
-              <button type="submit" className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold">Enviar</button>
+              <button 
+                type="submit" 
+                disabled={isSubmitting}
+                className={`text-white px-6 py-2 rounded-lg font-bold transition-all ${
+                    isSubmitting 
+                    ? 'bg-slate-400 cursor-not-allowed' 
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                {isSubmitting ? 'Enviando...' : 'Enviar'}
+              </button>
             </div>
           </form>
         </div>
@@ -167,7 +203,6 @@ const Tickets: React.FC = () => {
           {tickets.map(ticket => (
             <div key={ticket.id} className={`bg-white rounded-xl border transition-all ${activeTicketId === ticket.id ? 'ring-2 ring-blue-500 border-transparent shadow-lg' : 'border-slate-200 hover:shadow-md'}`}>
               
-              {/* Cabeçalho do Ticket */}
               <div className="p-5 cursor-pointer" onClick={() => setActiveTicketId(activeTicketId === ticket.id ? null : ticket.id)}>
                 <div className="flex flex-col md:flex-row justify-between md:items-start gap-4">
                   <div className="flex-1">
@@ -188,7 +223,6 @@ const Tickets: React.FC = () => {
                         <span className="text-xs text-slate-400 font-normal">({ticket.messages?.length || 0})</span>
                     </h3>
                     
-                    {/* Info do Morador */}
                     <div className="mt-2 text-xs text-slate-500 flex items-center gap-3">
                         <span className="flex items-center gap-1"><User size={12} /> {ticket.userName}</span>
                         {(ticket.userBlock || ticket.userUnit) && (
@@ -197,7 +231,6 @@ const Tickets: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Ações Rápidas (Direita) */}
                   {isManager && (
                       <div className="flex flex-col items-end gap-2" onClick={e => e.stopPropagation()}>
                           <select 
@@ -215,15 +248,12 @@ const Tickets: React.FC = () => {
                 </div>
               </div>
 
-              {/* Área Expandida: Detalhes + Chat */}
               {activeTicketId === ticket.id && (
                 <div className="border-t border-slate-100 bg-slate-50/50 rounded-b-xl">
-                  {/* Descrição Completa */}
                   <div className="p-5 border-b border-slate-100">
                     <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Descrição Detalhada</h4>
                     <p className="text-slate-700 text-sm whitespace-pre-wrap">{ticket.description}</p>
                     
-                    {/* Botões de Ação de Status */}
                     <div className="mt-4 flex gap-2">
                         {isManager && ticket.status !== 'CLOSED' && (
                             <>
@@ -237,7 +267,6 @@ const Tickets: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Chat */}
                   <div className="p-5">
                     <h4 className="text-xs font-bold text-slate-400 uppercase mb-4 flex items-center gap-2">
                         Histórico de Atendimento <MessageSquare size={12} />
@@ -247,7 +276,7 @@ const Tickets: React.FC = () => {
                         {ticket.messages?.length === 0 && <p className="text-center text-xs text-slate-400 italic">Nenhuma mensagem ainda.</p>}
                         
                         {ticket.messages?.map(msg => {
-                            const isMe = msg.senderName === user?.nome; // Ajuste conforme seu contexto de usuário
+                            const isMe = msg.senderName === user?.nome; 
                             const isStaff = msg.adminSender;
                             
                             return (
@@ -256,8 +285,8 @@ const Tickets: React.FC = () => {
                                         isMe 
                                         ? 'bg-blue-600 text-white rounded-tr-none' 
                                         : isStaff 
-                                            ? 'bg-slate-800 text-white rounded-tl-none border border-slate-700' // Admin
-                                            : 'bg-white text-slate-700 border border-slate-200 rounded-tl-none' // Outro morador (raro aqui, mas possível)
+                                            ? 'bg-slate-800 text-white rounded-tl-none border border-slate-700' 
+                                            : 'bg-white text-slate-700 border border-slate-200 rounded-tl-none' 
                                     }`}>
                                         {isStaff && !isMe && <span className="text-[10px] font-bold text-emerald-400 block mb-1">ADMINISTRAÇÃO</span>}
                                         <p>{msg.message}</p>
@@ -270,7 +299,6 @@ const Tickets: React.FC = () => {
                         })}
                     </div>
 
-                    {/* Input Chat */}
                     {ticket.status !== 'CLOSED' && (
                         <div className="flex gap-2">
                             <input 

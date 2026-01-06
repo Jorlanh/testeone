@@ -1,12 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
-import { AdminDashboardStats, User } from '../../types';
+// Defina esses tipos no seu arquivo de tipos se ainda não existirem
+// import { AdminDashboardStats, User } from '../../types'; 
 import { 
   Users, Building, DollarSign, Tag, Plus, Save, 
   ShieldAlert, LayoutDashboard, Search, Folder, UserPlus, Trash2, Activity, UserCircle, Edit, MapPin, X, CalendarClock, Mail, Lock, FileText,
   Eye, EyeOff, Power, CalendarPlus
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+
+// Interfaces locais para garantir que o código compile se você não tiver o arquivo de types
+interface AdminDashboardStats {
+    totalUsers: number;
+    onlineUsers: number;
+    totalTenants: number;
+    activeTenants: number;
+    mrr: number;
+    latency: number;
+}
 
 export default function SuperAdminDashboard() {
   const [activeTab, setActiveTab] = useState('STATS');
@@ -66,7 +77,9 @@ function TabBtn({ label, icon, active, onClick }: any) {
   );
 }
 
-// --- AUDIT LOG VIEW ---
+// --- SUB-COMPONENTES ---
+
+// 1. AUDIT LOG VIEW
 function AuditLogView() {
     const [logs, setLogs] = useState<any[]>([]);
     
@@ -104,7 +117,7 @@ function AuditLogView() {
     );
 }
 
-// --- 1. ADMINS LIST ---
+// 2. ADMINS LIST
 function AdminsList({ currentUser }: { currentUser: any }) {
     const [admins, setAdmins] = useState<any[]>([]);
     
@@ -112,7 +125,7 @@ function AdminsList({ currentUser }: { currentUser: any }) {
     useEffect(() => { load(); }, []);
 
     const handleDelete = async (id: string) => {
-        if(!confirm("Remover este admin?")) return;
+        if(!confirm("Tem certeza que deseja remover este administrador? Essa ação não pode ser desfeita.")) return;
         try { await api.delete(`/admin/users/${id}`); load(); } 
         catch(e: any) { alert(e.response?.data?.error || "Você não tem permissão para isso."); }
     };
@@ -138,7 +151,7 @@ function AdminsList({ currentUser }: { currentUser: any }) {
                             {adm.id === '10000000-0000-0000-0000-000000000000' ? 'Super Admin' : 'Admin Votzz'}
                         </span>
                         {currentUser?.id === '10000000-0000-0000-0000-000000000000' && adm.id !== currentUser.id && (
-                            <button onClick={() => handleDelete(adm.id)} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors">
+                            <button onClick={() => handleDelete(adm.id)} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors" title="Remover Admin">
                                 <Trash2 size={16}/>
                             </button>
                         )}
@@ -149,7 +162,7 @@ function AdminsList({ currentUser }: { currentUser: any }) {
     );
 }
 
-// --- 2. TENANTS ---
+// 3. TENANTS MANAGER
 function TenantsManager() {
     const [tenants, setTenants] = useState<any[]>([]);
     const [editingTenant, setEditingTenant] = useState<any>(null);
@@ -172,9 +185,21 @@ function TenantsManager() {
     const handleUpdate = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await api.put(`/admin/tenants/${editingTenant.id}`, editingTenant);
-            alert("Atualizado com sucesso!"); setEditingTenant(null); load();
-        } catch (e) { alert("Erro ao atualizar."); }
+            // Prepara o payload para garantir que o plano e status vão corretamente
+            const payload = {
+                ...editingTenant,
+                // Se plano for objeto, pega o nome, se for string, mantém. Importante para o backend.
+                plano: typeof editingTenant.plano === 'object' ? editingTenant.plano?.nome : editingTenant.plano,
+                ativo: editingTenant.ativo === true || editingTenant.ativo === 'true'
+            };
+
+            await api.put(`/admin/tenants/${editingTenant.id}`, payload);
+            alert("Condomínio atualizado com sucesso!"); 
+            setEditingTenant(null); 
+            load();
+        } catch (e: any) { 
+            alert(e.response?.data?.error || "Erro ao atualizar condomínio."); 
+        }
     };
 
     const getDaysRemaining = (expireDate: string) => {
@@ -184,7 +209,6 @@ function TenantsManager() {
         return days > 0 ? `${days} dias` : 'Vencido';
     };
 
-    // Helper para adicionar dias na data de expiração
     const addDays = (days: number) => {
         const current = editingTenant.dataExpiracaoPlano ? new Date(editingTenant.dataExpiracaoPlano) : new Date();
         current.setDate(current.getDate() + days);
@@ -198,11 +222,11 @@ function TenantsManager() {
                     <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
                         <div className="flex justify-between mb-4">
                             <h3 className="font-bold text-xl flex items-center gap-2"><Edit size={20}/> Editar {editingTenant.nome}</h3>
-                            <button onClick={() => setEditingTenant(null)}><X /></button>
+                            <button onClick={() => setEditingTenant(null)} className="p-2 hover:bg-slate-100 rounded-full"><X /></button>
                         </div>
                         <form onSubmit={handleUpdate} className="space-y-6">
                             
-                            {/* SEÇÃO DE ASSINATURA E STATUS (NOVO) */}
+                            {/* SEÇÃO GOD MODE: ASSINATURA E STATUS */}
                             <div className="bg-indigo-50 p-5 rounded-[1.5rem] border border-indigo-100">
                                 <h4 className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-3 flex items-center gap-1"><Power size={14}/> Gestão de Assinatura & Status</h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -228,6 +252,7 @@ function TenantsManager() {
                                             <option value="TRIMESTRAL">Trimestral</option>
                                             <option value="SEMESTRAL">Semestral</option>
                                             <option value="ANUAL">Anual</option>
+                                            <option value="GRATUITO">Gratuito/Teste</option>
                                         </select>
                                     </div>
                                 </div>
@@ -247,8 +272,11 @@ function TenantsManager() {
                             </div>
 
                             <div className="space-y-4">
-                                <input className="w-full p-3 border rounded-xl" value={editingTenant.nome} onChange={e => setEditingTenant({...editingTenant, nome: e.target.value})} placeholder="Nome"/>
-                                <input className="w-full p-3 border rounded-xl" value={editingTenant.cnpj} onChange={e => setEditingTenant({...editingTenant, cnpj: e.target.value})} placeholder="CNPJ"/>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <input className="w-full p-3 border rounded-xl" value={editingTenant.nome} onChange={e => setEditingTenant({...editingTenant, nome: e.target.value})} placeholder="Nome do Condomínio"/>
+                                    <input className="w-full p-3 border rounded-xl" value={editingTenant.cnpj} onChange={e => setEditingTenant({...editingTenant, cnpj: e.target.value})} placeholder="CNPJ"/>
+                                </div>
+                                
                                 <div className="bg-slate-50 p-4 rounded-xl space-y-3">
                                     <p className="text-xs font-bold text-slate-400 uppercase">Endereço</p>
                                     <input className="w-full p-3 bg-white border rounded-xl" placeholder="CEP" value={editingTenant.cep || ''} onChange={e => { setEditingTenant({...editingTenant, cep: e.target.value}); fetchCep(e.target.value); }} />
@@ -259,7 +287,10 @@ function TenantsManager() {
                                         <input className="p-3 bg-white border rounded-xl" placeholder="Cidade" value={editingTenant.cidade || ''} onChange={e => setEditingTenant({...editingTenant, cidade: e.target.value})} />
                                     </div>
                                 </div>
-                                <input className="w-full p-3 border rounded-xl" value={editingTenant.secretKeyword} onChange={e => setEditingTenant({...editingTenant, secretKeyword: e.target.value})} placeholder="Palavra-chave"/>
+                                <div className="flex flex-col">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Palavra-chave Secreta</label>
+                                    <input className="w-full p-3 border rounded-xl font-mono text-sm" value={editingTenant.secretKeyword} onChange={e => setEditingTenant({...editingTenant, secretKeyword: e.target.value})} placeholder="Palavra-chave"/>
+                                </div>
                             </div>
                             
                             <button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-4 rounded-xl font-bold shadow-lg shadow-emerald-200 transition-all">Salvar Alterações</button>
@@ -290,7 +321,7 @@ function TenantsManager() {
     );
 }
 
-// --- 3. CUPONS ---
+// 4. COUPONS MANAGER
 function CouponsManager() {
   const [coupons, setCoupons] = useState<any[]>([]);
   const [form, setForm] = useState({ code: '', discount: '', quantity: 1 });
@@ -309,12 +340,12 @@ function CouponsManager() {
       alert('Cupom criado!');
       setForm({ code: '', discount: '', quantity: 1 });
       load();
-    } catch (err) { alert('Erro ao criar.'); }
+    } catch (err) { alert('Erro ao criar cupom.'); }
   };
 
   const handleDelete = async (id: string) => {
-      if(!confirm("Apagar?")) return;
-      try { await api.delete(`/admin/coupons/${id}`); load(); } catch(e) { alert("Erro"); }
+      if(!confirm("Apagar este cupom?")) return;
+      try { await api.delete(`/admin/coupons/${id}`); load(); } catch(e) { alert("Erro ao apagar."); }
   };
 
   return (
@@ -324,7 +355,7 @@ function CouponsManager() {
             <form onSubmit={handleCreate} className="space-y-6">
                 <div>
                     <label className="text-xs font-bold text-slate-400 ml-2 uppercase">Código</label>
-                    <input required value={form.code} onChange={e => setForm({...form, code: e.target.value.toUpperCase()})} className="w-full p-4 bg-slate-50 rounded-2xl font-mono text-xl" />
+                    <input required value={form.code} onChange={e => setForm({...form, code: e.target.value.toUpperCase()})} className="w-full p-4 bg-slate-50 rounded-2xl font-mono text-xl uppercase" placeholder="EX: VERÃO2026" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                     <input required type="number" placeholder="% Desc" value={form.discount} onChange={e => setForm({...form, discount: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl" />
@@ -339,19 +370,20 @@ function CouponsManager() {
                     <div>
                         <p className="font-mono font-black text-xl text-slate-700">{c.code}</p>
                         <div className="flex gap-2 mt-1">
-                            <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-lg">{c.discountPercent}% OFF</span>
-                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg">Restam: {c.quantity}</span>
+                            <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-lg font-bold">{c.discountPercent}% OFF</span>
+                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg font-bold">Restam: {c.quantity}</span>
                         </div>
                     </div>
                     <button onClick={() => handleDelete(c.id)} className="p-3 text-red-400 hover:bg-red-50 rounded-xl"><Trash2 size={20}/></button>
                 </div>
             ))}
+            {coupons.length === 0 && <p className="text-slate-400 text-center py-4">Nenhum cupom ativo.</p>}
         </div>
     </div>
   );
 }
 
-// --- 4. USUARIOS ---
+// 5. ORGANIZED USERS VIEW
 function OrganizedUsersView() {
   const [data, setData] = useState<any>(null);
   const [tenantsList, setTenantsList] = useState<any[]>([]);
@@ -360,7 +392,6 @@ function OrganizedUsersView() {
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   
-  // Default role changed to MORADOR, user can change to ADM_CONDO
   const [newUser, setNewUser] = useState({ tenantId: '', nome: '', email: '', password: 'votzz', role: 'MORADOR', cpf: '', whatsapp: '', unidade: '', bloco: '' });
 
   const loadData = () => {
@@ -373,7 +404,7 @@ function OrganizedUsersView() {
       e.preventDefault();
       try {
           await api.post('/admin/create-user-linked', newUser);
-          alert("Criado!"); setIsCreatingUser(false); loadData();
+          alert("Usuário criado com sucesso!"); setIsCreatingUser(false); loadData();
           setNewUser({ tenantId: '', nome: '', email: '', password: 'votzz', role: 'MORADOR', cpf: '', whatsapp: '', unidade: '', bloco: '' });
       } catch(e: any) { 
           const msg = e.response?.data?.error || e.response?.data?.message || "Erro desconhecido";
@@ -388,28 +419,29 @@ function OrganizedUsersView() {
             nome: editingUser.nome,
             email: editingUser.email,
             cpf: editingUser.cpf,
-            whatsapp: editingUser.whatsapp
+            whatsapp: editingUser.whatsapp,
+            role: editingUser.role // Permitir alteração de role
         };
         if(editingUser.newPassword) payload.newPassword = editingUser.newPassword;
 
         await api.put(`/admin/users/${editingUser.id}`, payload);
-        alert("Atualizado!"); setEditingUser(null); loadData();
-    } catch (e) { alert("Erro ao atualizar."); }
+        alert("Usuário atualizado!"); setEditingUser(null); loadData();
+    } catch (e) { alert("Erro ao atualizar usuário."); }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Excluir?")) return;
-    try { await api.delete(`/admin/users/${id}`); loadData(); } catch (e) { alert("Erro."); }
+    if (!confirm("Tem certeza que deseja excluir este usuário?")) return;
+    try { await api.delete(`/admin/users/${id}`); loadData(); } catch (e) { alert("Erro ao excluir."); }
   };
 
-  if (!data) return <div className="p-20 text-center animate-pulse font-black text-slate-400">CARREGANDO...</div>;
+  if (!data) return <div className="p-20 text-center animate-pulse font-black text-slate-400">CARREGANDO DADOS...</div>;
 
   return (
     <div className="space-y-6">
       <div className="flex gap-4">
           <div className="bg-white p-4 rounded-3xl shadow-sm border flex items-center gap-3 flex-1">
             <Search size={20} className="text-slate-300 ml-2" />
-            <input className="w-full outline-none font-medium text-slate-600" placeholder="Buscar usuário..." onChange={e => setSearch(e.target.value)} />
+            <input className="w-full outline-none font-medium text-slate-600" placeholder="Buscar usuário por nome..." onChange={e => setSearch(e.target.value)} />
           </div>
           <button onClick={() => setIsCreatingUser(true)} className="bg-blue-600 text-white px-6 rounded-3xl font-bold flex items-center gap-2 hover:bg-blue-700 transition-colors">
               <UserPlus size={20} /> Novo Morador
@@ -428,7 +460,7 @@ function OrganizedUsersView() {
                           <option value="">Selecione o Condomínio</option>
                           {tenantsList.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
                       </select>
-                      <input required className="w-full p-3 border rounded-xl" placeholder="Nome" value={newUser.nome} onChange={e => setNewUser({...newUser, nome: e.target.value})}/>
+                      <input required className="w-full p-3 border rounded-xl" placeholder="Nome Completo" value={newUser.nome} onChange={e => setNewUser({...newUser, nome: e.target.value})}/>
                       <input required className="w-full p-3 border rounded-xl" placeholder="Email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})}/>
                       <div className="grid grid-cols-2 gap-3">
                           <input className="p-3 border rounded-xl" placeholder="CPF" value={newUser.cpf} onChange={e => setNewUser({...newUser, cpf: e.target.value})}/>
@@ -454,12 +486,18 @@ function OrganizedUsersView() {
             <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-lg w-full">
                 <h3 className="text-xl font-black mb-4">Editar Usuário</h3>
                 <form onSubmit={handleUpdate} className="space-y-4">
-                    <input className="w-full p-3 border rounded-xl" value={editingUser.nome} onChange={e => setEditingUser({...editingUser, nome: e.target.value})} />
-                    <input className="w-full p-3 border rounded-xl" value={editingUser.email} onChange={e => setEditingUser({...editingUser, email: e.target.value})} />
+                    <input className="w-full p-3 border rounded-xl" value={editingUser.nome} onChange={e => setEditingUser({...editingUser, nome: e.target.value})} placeholder="Nome" />
+                    <input className="w-full p-3 border rounded-xl" value={editingUser.email} onChange={e => setEditingUser({...editingUser, email: e.target.value})} placeholder="Email" />
                     <div className="grid grid-cols-2 gap-4">
                         <input className="w-full p-3 border rounded-xl" placeholder="CPF" value={editingUser.cpf || ''} onChange={e => setEditingUser({...editingUser, cpf: e.target.value})} />
                         <input className="w-full p-3 border rounded-xl" placeholder="WhatsApp" value={editingUser.whatsapp || ''} onChange={e => setEditingUser({...editingUser, whatsapp: e.target.value})} />
                     </div>
+                      <select className="w-full p-3 border rounded-xl" value={editingUser.role} onChange={e => setEditingUser({...editingUser, role: e.target.value})}>
+                          <option value="MORADOR">Morador</option>
+                          <option value="SINDICO">Síndico</option>
+                          <option value="ADM_CONDO">Administrador</option>
+                          <option value="AFILIADO">Afiliado</option>
+                      </select>
                     <div className="relative">
                         <input className="w-full p-3 border border-yellow-300 bg-yellow-50 rounded-xl pr-10" type={showPassword ? "text" : "password"} placeholder="Nova Senha (opcional)" onChange={e => setEditingUser({...editingUser, newPassword: e.target.value})} />
                         <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-3 text-yellow-600">
@@ -513,7 +551,7 @@ const UserTable = ({ users, search, onEdit, onDelete }: any) => {
   );
 };
 
-// --- MANUAL CONDO ---
+// 6. MANUAL CONDO CREATOR
 function ManualCondoCreator() {
   const [form, setForm] = useState<any>({ condoName: '', cnpj: '', qtyUnits: 30, secretKeyword: '', nameSyndic: '', emailSyndic: '', cpfSyndic: '', phoneSyndic: '', passwordSyndic: '', confirm: '', cep: '', logradouro: '', numero: '', bairro: '', cidade: '', estado: '', pontoReferencia: '' });
   const [showPassword, setShowPassword] = useState(false);
@@ -536,8 +574,9 @@ function ManualCondoCreator() {
     if(form.passwordSyndic !== form.confirm) return alert("Senhas não conferem");
     try {
         await api.post('/admin/create-tenant-manual', form);
-        alert('Condomínio criado!');
-    } catch(err: any) { alert(err.response?.data?.error || 'Erro.'); }
+        alert('Condomínio criado com sucesso!');
+        // Opcional: Limpar formulário
+    } catch(err: any) { alert(err.response?.data?.error || 'Erro ao criar condomínio.'); }
   };
 
   return (
@@ -590,7 +629,7 @@ function ManualCondoCreator() {
   );
 }
 
-// --- CRIAR ADMIN ---
+// 7. CREATE ADMIN FORM
 function CreateAdminForm() {
     const [form, setForm] = useState({ nome: '', email: '', cpf: '', phone: '', password: '', confirm: '' });
     const [showPassword, setShowPassword] = useState(false);
@@ -600,14 +639,14 @@ function CreateAdminForm() {
         if (form.password !== form.confirm) return alert("Senhas não coincidem!");
         try {
             await api.post('/admin/create-admin', { nome: form.nome, email: form.email, cpf: form.cpf, whatsapp: form.phone, password: form.password });
-            alert("Admin Criado!"); setForm({ nome: '', email: '', cpf: '', phone: '', password: '', confirm: '' });
-        } catch (err: any) { alert(err.response?.data?.error || "Erro."); }
+            alert("Admin Criado com Sucesso!"); setForm({ nome: '', email: '', cpf: '', phone: '', password: '', confirm: '' });
+        } catch (err: any) { alert(err.response?.data?.error || "Erro ao criar admin."); }
     };
     return (
         <div className="max-w-xl mx-auto bg-white p-12 rounded-[3.5rem] shadow-2xl border-t-[12px] border-red-500">
              <div className="text-center mb-10"><ShieldAlert className="text-red-500 mx-auto" size={48}/><h3 className="text-2xl font-black text-slate-800 uppercase">Novo Admin</h3></div>
              <form onSubmit={handleSubmit} className="space-y-4">
-                <input required placeholder="Nome" value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} className="w-full p-5 bg-slate-50 border-none rounded-2xl font-bold" />
+                <input required placeholder="Nome Completo" value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} className="w-full p-5 bg-slate-50 border-none rounded-2xl font-bold" />
                 <input required type="email" placeholder="Email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full p-5 bg-slate-50 border-none rounded-2xl font-bold" />
                 <div className="grid grid-cols-2 gap-4">
                   <input required placeholder="CPF" value={form.cpf} onChange={e => setForm({...form, cpf: e.target.value})} className="w-full p-5 bg-slate-50 border-none rounded-2xl font-bold" />
@@ -624,7 +663,7 @@ function CreateAdminForm() {
     );
 }
 
-// --- STATS ---
+// 8. STATS VIEW
 function StatsView() {
   const [stats, setStats] = useState<AdminDashboardStats | null>(null);
   const [latency, setLatency] = useState(0);
@@ -635,15 +674,22 @@ function StatsView() {
       const start = Date.now();
       try {
         const res = await api.get('/admin/dashboard-stats');
-        if (isMounted) { setLatency(Date.now() - start); setStats(res.data); }
-      } catch (e) {}
+        if (isMounted) { 
+            setLatency(Date.now() - start); 
+            // Força atualização mesmo se for 0, mas evita setar null se vier undefined
+            if(res.data) setStats(res.data);
+        }
+      } catch (e) { console.error(e); }
     };
     fetchData();
-    const interval = setInterval(fetchData, 10000);
+    const interval = setInterval(fetchData, 5000); // 5 segundos
     return () => { isMounted = false; clearInterval(interval); };
   }, []);
 
-  const formatMoney = (val: number | string) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(val) || 0);
+  const formatMoney = (val: number | string | undefined) => {
+    if (val === undefined || val === null) return 'R$ 0,00';
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(val));
+  };
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -652,9 +698,27 @@ function StatsView() {
         <p className="text-blue-200/50 text-[10px] font-black uppercase mb-1">Latência</p>
         <p className={`text-4xl font-black ${latency > 250 ? 'text-red-400' : 'text-emerald-400'}`}>{latency}ms</p>
       </div>
-      <StatCard icon={<Building />} color="blue" title="Condomínios" value={stats?.totalTenants || 0} />
-      <StatCard icon={<Users />} color="purple" title="Usuários" value={stats?.totalUsers || 0} />
-      <StatCard icon={<DollarSign />} color="emerald" title="MRR Estimado" value={formatMoney(stats?.mrr || 0)} />
+      
+      <StatCard 
+        icon={<Building />} 
+        color="blue" 
+        title="Condomínios Totais" 
+        value={stats ? stats.totalTenants : '-'} 
+      />
+      
+      <StatCard 
+        icon={<Users />} 
+        color="purple" 
+        title="Usuários na Base" 
+        value={stats ? stats.totalUsers : '-'} 
+      />
+      
+      <StatCard 
+        icon={<DollarSign />} 
+        color="emerald" 
+        title="MRR Estimado" 
+        value={formatMoney(stats?.mrr)} 
+      />
     </div>
   );
 }
@@ -666,7 +730,7 @@ const StatCard = ({ icon, title, value, color }: any) => (
   </div>
 );
 
-// --- PERFIL DO ADMIN ---
+// 9. ADMIN PROFILE VIEW
 function AdminProfileView({ user }: { user: any }) {
     const [showPassword, setShowPassword] = useState(false);
     const [form, setForm] = useState({

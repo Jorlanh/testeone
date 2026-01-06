@@ -49,17 +49,34 @@ const Governance: React.FC = () => {
 
   useEffect(() => {
     loadDashboard();
-  }, []);
+  }, [user]); // Adicionei user na dependência para garantir que temos o ID
 
   const loadDashboard = async () => {
     try {
         const response = await api.get('/governance/dashboard');
         const safeData = response.data || {};
+        
+        // Inicializa estruturas vazias se vierem nulas
         safeData.polls = safeData.polls || { active: [], archived: [] };
         safeData.announcements = safeData.announcements || { active: [], archived: [] };
         safeData.calendar = safeData.calendar || [];
         safeData.timeline = safeData.timeline || [];
         safeData.kpis = safeData.kpis || { activePolls: 0, unreadComms: 0, totalActions: 0, participationRate: 0 };
+
+        // --- CORREÇÃO CRÍTICA DO RELOAD ---
+        // Se o backend não calcular 'isReadByCurrentUser' corretamente, calculamos aqui no front
+        // Verificamos se o ID do usuário atual está dentro da lista 'readBy'
+        const processAnnouncements = (list: any[]) => {
+            return list.map(ann => {
+                // Se já estiver true, mantem. Se não, verifica a lista de IDs.
+                const userAlreadyRead = ann.isReadByCurrentUser || (ann.readBy && user?.id && ann.readBy.includes(user.id));
+                return { ...ann, isReadByCurrentUser: userAlreadyRead };
+            });
+        };
+
+        safeData.announcements.active = processAnnouncements(safeData.announcements.active);
+        safeData.announcements.archived = processAnnouncements(safeData.announcements.archived);
+        // ----------------------------------
         
         setData(safeData);
     } catch (e) { 
@@ -82,7 +99,7 @@ const Governance: React.FC = () => {
       try {
           await api.post(`/governance/polls/${pollId}/vote`, { optionId: option.id });
           alert("Voto registrado com sucesso!");
-          loadDashboard(); // Recarrega para computar votos e atualizar UI
+          loadDashboard(); 
       } catch (e: any) { 
           alert("Erro ao votar: " + (e.response?.data?.message || e.message)); 
       }
@@ -91,9 +108,38 @@ const Governance: React.FC = () => {
   const handleConfirmRead = async (annId: string) => {
       try {
           await api.post(`/governance/announcements/${annId}/read`);
-          alert("Leitura confirmada!");
-          loadDashboard(); // Recarrega para atualizar o contador de leituras
-      } catch (e) { alert("Erro ao confirmar leitura."); }
+          
+          setData(prevData => {
+              if (!prevData) return null;
+              
+              // Atualiza a lista ativa e arquivada
+              const updateList = (list: any[]) => list.map(item => 
+                  item.id === annId 
+                  ? { 
+                      ...item, 
+                      isReadByCurrentUser: true, // FORÇA VISUALMENTE COMO LIDO
+                      readBy: [...(item.readBy || []), user?.id] // Adiciona ID para consistência
+                    } 
+                  : item
+              );
+
+              return {
+                  ...prevData,
+                  kpis: {
+                      ...prevData.kpis,
+                      unreadComms: Math.max(0, prevData.kpis.unreadComms - 1)
+                  },
+                  announcements: {
+                      active: updateList(prevData.announcements.active),
+                      archived: updateList(prevData.announcements.archived)
+                  }
+              };
+          });
+
+      } catch (e) { 
+          console.error(e);
+          alert("Erro ao confirmar leitura."); 
+      }
   }
 
   const handleDelete = async (type: 'polls' | 'announcements' | 'events', id: string) => {
@@ -104,22 +150,43 @@ const Governance: React.FC = () => {
       } catch (e) { alert("Erro ao excluir item."); }
   };
 
+  // --- DOWNLOAD PDF CORRIGIDO ---
   const handleDownloadPdf = async (pollId: string, title: string) => {
       try {
-          // Implementação da Impressora: chama o endpoint de report do backend como blob
-          const response = await api.get(`/governance/polls/${pollId}/report`, { responseType: 'blob' });
-          const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+          // Solicita o BLOB
+          const response = await api.get(`/governance/polls/${pollId}/report`, { 
+              responseType: 'blob',
+              headers: {
+                  'Accept': 'application/pdf'
+              }
+          });
+
+          // Cria URL do objeto
+          const blob = new Blob([response.data], { type: 'application/pdf' });
+          const url = window.URL.createObjectURL(blob);
+          
+          // Cria link temporário
           const link = document.createElement('a');
           link.href = url;
-          link.setAttribute('download', `dossie_auditoria_${title.replace(/\s+/g, '_')}_Votzz.pdf`);
+          const safeTitle = title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+          link.setAttribute('download', `Auditoria_${safeTitle}.pdf`);
+          
+          // Simula clique e limpa
           document.body.appendChild(link);
           link.click();
-          link.remove();
-          window.URL.revokeObjectURL(url);
-      } catch (e) { alert("Erro ao gerar PDF."); }
+          
+          setTimeout(() => {
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+          }, 100);
+
+      } catch (e) { 
+          console.error("Erro download PDF:", e);
+          alert("Erro ao baixar auditoria. Verifique se o arquivo existe."); 
+      }
   };
 
-  // --- EDIT PREP (Mantido igual) ---
+  // --- EDIT PREP ---
   const openEdit = (type: 'poll' | 'ann' | 'event', item: any) => {
       setIsEditing(true);
       setEditingId(item.id);
@@ -150,7 +217,7 @@ const Governance: React.FC = () => {
       }
   };
 
-  // --- SUBMITS (Mantidos iguais) ---
+  // --- SUBMITS ---
   const submitPoll = async (e: React.FormEvent) => {
       e.preventDefault();
       const formattedEndDate = pollForm.endDate.includes('T') ? pollForm.endDate : `${pollForm.endDate}T23:59:59`;
@@ -198,7 +265,6 @@ const Governance: React.FC = () => {
       } catch(e) { alert("Erro ao salvar evento."); }
   };
 
-  // Helper para contar votos
   const getVoteCount = (poll: any, optionId: string) => {
       if(!poll.votes) return 0;
       return poll.votes.filter((v: any) => v.optionId === optionId).length;
@@ -212,7 +278,7 @@ const Governance: React.FC = () => {
 
   return (
     <div className="space-y-8 animate-in fade-in pb-20">
-       {/* HEADER (Mantido) */}
+       {/* HEADER */}
        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -232,7 +298,7 @@ const Governance: React.FC = () => {
           </div>
        </div>
 
-       {/* === DASHBOARD KPI (Mantido) === */}
+       {/* === DASHBOARD KPI === */}
        {activeTab === 'dashboard' && (
            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
@@ -241,7 +307,7 @@ const Governance: React.FC = () => {
                   <KpiCard title="Participação Média" value={`${data.kpis.participationRate}%`} icon={UserCheck} color="text-emerald-500" bg="bg-white" iconBg="bg-emerald-50" />
                   <KpiCard title="Ações no Período" value={data.kpis.totalActions} icon={FileText} color="text-purple-500" bg="bg-white" iconBg="bg-purple-50" />
                </div>
-               {/* Timeline (Mantida) */}
+               
                <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-slate-100 shadow-sm">
                    <h3 className="font-bold text-slate-800 mb-6 flex items-center"><Clock className="w-5 h-5 mr-2 text-slate-400" /> Linha do Tempo (Tempo Real)</h3>
                    <div className="relative pl-2">
@@ -266,7 +332,7 @@ const Governance: React.FC = () => {
                        ))}
                    </div>
                </div>
-               {/* Conselho (Mantido) */}
+               
                <div className="space-y-6">
                    <div className="bg-slate-900 text-white p-6 rounded-xl shadow-lg relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-8 opacity-10"><ShieldCheck className="w-32 h-32" /></div>
@@ -298,7 +364,7 @@ const Governance: React.FC = () => {
                     )}
                 </div>
                 
-                {/* MODAL ENQUETE (Mantido) */}
+                {/* MODAL ENQUETE */}
                 {showPollModal && (
                     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                         <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95">
@@ -327,9 +393,8 @@ const Governance: React.FC = () => {
                     {pollsList.map((poll: any) => (
                         <div key={poll.id} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow relative group">
                             <div className="absolute top-4 right-4 flex gap-2">
-                                {/* Botão de Impressora/Dossiê (Aparece para Síndico e Adm) */}
                                 {canManage && (
-                                    <button onClick={() => handleDownloadPdf(poll.id, poll.title)} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors" title="Baixar Dossiê de Auditoria (Imprimir)"><Printer size={18}/></button>
+                                    <button onClick={() => handleDownloadPdf(poll.id, poll.title)} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors" title="Baixar Dossiê de Auditoria (PDF)"><Printer size={18}/></button>
                                 )}
                                 {subTab === 'archived' && !canManage && (
                                     <button onClick={() => handleDownloadPdf(poll.id, poll.title)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Baixar Relatório"><Download size={16}/></button>
@@ -351,7 +416,6 @@ const Governance: React.FC = () => {
                             <h3 className="font-bold text-slate-900 text-lg mb-2">{poll.title}</h3>
                             <p className="text-sm text-slate-600 mb-6">{poll.description}</p>
 
-                            {/* AUDITORIA REAL-TIME PARA SÍNDICO */}
                             {canManage && (
                                 <div className="mb-4 p-3 bg-slate-50 rounded-lg border border-slate-100">
                                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-2 flex items-center gap-1"><Target size={12}/> Auditoria Parcial</p>
@@ -435,7 +499,7 @@ const Governance: React.FC = () => {
                     )}
                </div>
 
-               {/* MODAL COMUNICADO (Mantido) */}
+               {/* MODAL COMUNICADO */}
                {showAnnModal && (
                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                        <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95">
@@ -494,7 +558,6 @@ const Governance: React.FC = () => {
                            <p className="text-slate-600 mt-2 whitespace-pre-wrap text-sm leading-relaxed">{ann.content}</p>
                            
                            <div className="mt-4 pt-4 border-t border-slate-100/50 flex justify-between items-center">
-                               {/* CONTADOR DE LEITURAS (Baseado na lista readBy) */}
                                <div className="flex items-center gap-2 text-xs text-slate-400">
                                    <Eye size={14}/> {ann.readBy ? ann.readBy.length : 0} leituras confirmadas
                                </div>
@@ -522,7 +585,7 @@ const Governance: React.FC = () => {
            </div>
        )}
 
-       {/* === TAB: CALENDÁRIO (Mantido igual) === */}
+       {/* === TAB: CALENDÁRIO === */}
        {activeTab === 'calendar' && (
            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm animate-in fade-in">
                <div className="flex justify-between items-start mb-8">
@@ -602,7 +665,7 @@ const Governance: React.FC = () => {
   );
 };
 
-// UI Helpers (TabButton e KpiCard mantidos iguais)
+// UI Helpers
 const TabButton = ({ active, onClick, icon: Icon, label, badge }: any) => (
     <button onClick={onClick} className={`flex-1 flex items-center justify-center py-3 px-4 text-sm font-medium transition-all relative ${active ? 'text-emerald-600 border-b-2 border-emerald-600' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}>
         <Icon className="w-4 h-4 mr-2" /> {label} {badge && <span className="ml-2 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{badge}</span>}
