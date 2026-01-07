@@ -138,7 +138,12 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
             return;
         }
 
-        const socket = new SockJS('http://localhost:8080/ws-votzz');
+        // --- CORREÇÃO: Uso de (import.meta as any) para evitar erro TS2339 e lógica HTTPS ---
+        const apiUrl = (import.meta as any).env.VITE_API_URL || 'http://localhost:8080/api';
+        const baseUrl = apiUrl.replace(/\/api$/, '');
+        const socketUrl = `${baseUrl}/ws-votzz`;
+
+        const socket = new SockJS(socketUrl);
         stompClient = over(socket);
         stompClient.debug = () => {}; 
 
@@ -274,7 +279,9 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
 
   const handleExportDossier = () => {
       if(!id) return;
-      window.open(`http://localhost:8080/api/assemblies/${id}/dossier`, '_blank');
+      // CORREÇÃO: Uso de (import.meta as any) para evitar erro TS2339
+      const apiUrl = (import.meta as any).env.VITE_API_URL || 'http://localhost:8080/api';
+      window.open(`${apiUrl}/assemblies/${id}/dossier`, '_blank');
   };
 
   // --- FUNÇÃO DE IMPRESSÃO PDF PERSONALIZADA ---
@@ -367,7 +374,9 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
   const handleSummarizeIA = () => {
       if(!id) return;
       setSummarizing(true);
-      window.open(`http://localhost:8080/api/chat/assemblies/${id}/resumo-pdf`, '_blank');
+      // CORREÇÃO: Uso de (import.meta as any) para evitar erro TS2339
+      const apiUrl = (import.meta as any).env.VITE_API_URL || 'http://localhost:8080/api';
+      window.open(`${apiUrl}/chat/assemblies/${id}/resumo-pdf`, '_blank');
       setTimeout(() => setSummarizing(false), 2000);
   };
 
