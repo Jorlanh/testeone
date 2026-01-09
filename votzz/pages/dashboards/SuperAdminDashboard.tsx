@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { 
-  Users, Building, DollarSign, Tag, Plus, Save, 
+  Users, Building, DollarSign, Tag, Plus, 
   ShieldAlert, LayoutDashboard, Search, Folder, UserPlus, Trash2, Activity, UserCircle, Edit, MapPin, X, CalendarClock, Mail, Lock, FileText,
-  Eye, EyeOff, Power, CalendarPlus
+  Eye, EyeOff, Power, CheckCircle
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
-// Interfaces locais atualizadas para corresponder ao Backend
 interface AdminDashboardStats {
     totalUsers: number;
     onlineUsers: number;
@@ -117,55 +116,121 @@ function AuditLogView() {
 // 2. ADMINS LIST
 function AdminsList({ currentUser }: { currentUser: any }) {
     const [admins, setAdmins] = useState<any[]>([]);
+    const [editingAdmin, setEditingAdmin] = useState<any>(null);
+    const SUPER_ADMIN_ID = '10000000-0000-0000-0000-000000000000';
     
     const load = () => api.get('/admin/admins').then(res => setAdmins(res.data)).catch(() => {});
     useEffect(() => { load(); }, []);
 
+    const handleToggleStatus = async (id: string) => {
+        try { await api.patch(`/admin/users/${id}/toggle-status`); load(); } 
+        catch (e: any) { alert(e.response?.data || "Erro ao alterar status."); }
+    };
+
     const handleDelete = async (id: string) => {
-        if(!confirm("Tem certeza que deseja remover este administrador? Essa ação não pode ser desfeita.")) return;
+        if(!confirm("Tem certeza?")) return;
         try { await api.delete(`/admin/users/${id}`); load(); } 
-        catch(e: any) { alert(e.response?.data?.error || "Você não tem permissão para isso."); }
+        catch(e: any) { alert(e.response?.data || "Erro."); }
+    };
+
+    const handleUpdateAdmin = async (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+            await api.put(`/admin/users/${editingAdmin.id}`, editingAdmin);
+            alert("Admin atualizado com sucesso!");
+            setEditingAdmin(null);
+            load();
+        } catch(e: any) {
+            alert(e.response?.data || "Erro ao atualizar.");
+        }
     };
 
     return (
         <div className="space-y-4">
             <h3 className="font-black text-slate-700 ml-2 text-xl">Administradores do Sistema</h3>
-            {admins.map(adm => (
-                <div key={adm.id} className="bg-white p-6 rounded-[2rem] border shadow-sm flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center font-black text-lg">
-                            {adm.nome?.charAt(0) || 'A'}
+            
+            {/* MODAL DE EDIÇÃO */}
+            {editingAdmin && (
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl max-w-lg w-full">
+                        <div className="flex justify-between mb-6">
+                            <h3 className="font-black text-xl">Editar Admin</h3>
+                            <button onClick={() => setEditingAdmin(null)}><X /></button>
                         </div>
-                        <div>
-                            <h4 className="font-black text-slate-800 text-lg">{adm.nome}</h4>
-                            <p className="text-xs text-slate-400 font-mono font-bold mt-1">
-                                {adm.email} <span className="mx-2">•</span> {adm.whatsapp || 'Sem Zap'}
-                            </p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <span className="text-xs font-bold bg-red-50 text-red-600 px-4 py-2 rounded-xl uppercase tracking-wider border border-red-100">
-                            {adm.id === '10000000-0000-0000-0000-000000000000' ? 'Super Admin' : 'Admin Votzz'}
-                        </span>
-                        {currentUser?.id === '10000000-0000-0000-0000-000000000000' && adm.id !== currentUser.id && (
-                            <button onClick={() => handleDelete(adm.id)} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors" title="Remover Admin">
-                                <Trash2 size={16}/>
-                            </button>
-                        )}
+                        <form onSubmit={handleUpdateAdmin} className="space-y-4">
+                            <input className="w-full p-3 border rounded-xl" placeholder="Nome" value={editingAdmin.nome} onChange={e => setEditingAdmin({...editingAdmin, nome: e.target.value})} />
+                            <input className="w-full p-3 border rounded-xl" placeholder="Email" value={editingAdmin.email} onChange={e => setEditingAdmin({...editingAdmin, email: e.target.value})} />
+                            <input className="w-full p-3 border rounded-xl" placeholder="CPF" value={editingAdmin.cpf || ''} onChange={e => setEditingAdmin({...editingAdmin, cpf: e.target.value})} />
+                            <input className="w-full p-3 border rounded-xl" placeholder="WhatsApp" value={editingAdmin.whatsapp || ''} onChange={e => setEditingAdmin({...editingAdmin, whatsapp: e.target.value})} />
+                            <input className="w-full p-3 border rounded-xl" type="password" placeholder="Nova Senha (Deixe vazio para manter)" onChange={e => setEditingAdmin({...editingAdmin, newPassword: e.target.value})} />
+                            <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">Salvar Alterações</button>
+                        </form>
                     </div>
                 </div>
-            ))}
+            )}
+
+            {admins.map(adm => {
+                const isSuperAdmin = adm.id === SUPER_ADMIN_ID;
+                return (
+                    <div key={adm.id} className={`bg-white p-6 rounded-[2rem] border shadow-sm flex items-center justify-between ${!adm.enabled ? 'opacity-60 bg-slate-100' : ''}`}>
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center font-black text-lg">{adm.nome?.charAt(0)}</div>
+                            <div>
+                                <h4 className="font-black text-slate-800 text-lg flex items-center gap-2">
+                                    {adm.nome} {!adm.enabled && <span className="text-[10px] bg-red-500 text-white px-2 py-1 rounded">SUSPENSO</span>}
+                                </h4>
+                                <p className="text-xs text-slate-400 font-bold">{adm.email}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {isSuperAdmin ? (
+                                <span className="text-xs font-bold bg-amber-50 text-amber-600 px-3 py-1 rounded-lg border border-amber-100 uppercase"><Lock size={12}/> Protegido</span>
+                            ) : (
+                                <>
+                                    <button onClick={() => handleToggleStatus(adm.id)} className="p-2 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100">
+                                        {adm.enabled ? <Power size={16}/> : <CheckCircle size={16}/>}
+                                    </button>
+                                    <button onClick={() => setEditingAdmin(adm)} className="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100">
+                                        <Edit size={16}/>
+                                    </button>
+                                    <button onClick={() => handleDelete(adm.id)} className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100">
+                                        <Trash2 size={16}/>
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                );
+            })}
         </div>
     );
 }
 
-// 3. TENANTS MANAGER (COM BOTÃO DE EXCLUIR)
+// 3. TENANTS MANAGER
 function TenantsManager() {
     const [tenants, setTenants] = useState<any[]>([]);
     const [editingTenant, setEditingTenant] = useState<any>(null);
 
     const load = () => api.get('/admin/tenants').then(res => setTenants(res.data)).catch(() => {});
     useEffect(() => { load(); }, []);
+
+    const handleImpersonate = async (tenantId: string, tenantName: string) => {
+        if(!confirm(`Acessar painel de ${tenantName}?`)) return;
+        try {
+            const response = await api.post(`/admin/impersonate/${tenantId}`);
+            const data = response.data;
+            
+            const currentToken = localStorage.getItem('@Votzz:token');
+            if (currentToken) {
+                localStorage.setItem('@Votzz:superAdminToken', currentToken);
+            }
+
+            localStorage.setItem('@Votzz:token', data.token);
+            localStorage.setItem('@Votzz:user', JSON.stringify({ ...data, tenantId: data.tenantId }));
+            
+            window.location.href = '/dashboard'; 
+        } catch (error) { alert("Erro ao acessar."); }
+    };
 
     const fetchCep = async (cep: string) => {
         const cleanCep = cep.replace(/\D/g, '');
@@ -196,16 +261,13 @@ function TenantsManager() {
         }
     };
 
-    // --- NOVA FUNÇÃO DE EXCLUIR ---
     const handleDeleteTenant = async (id: string, nome: string) => {
         if (confirm(`ATENÇÃO: Deseja realmente desativar (excluir) o condomínio ${nome}? \n\nIsso bloqueará o acesso de todos os moradores.`)) {
             try {
-                // Chama o novo endpoint DELETE em TenantController
-                await api.delete(`/tenants/${id}`); 
-                alert("Condomínio desativado (Soft Delete) com sucesso.");
+                await api.delete(`/admin/users/${id}`); 
+                alert("Condomínio desativado com sucesso.");
                 load();
             } catch (error) {
-                console.error(error);
                 alert("Erro ao excluir condomínio. Verifique as permissões.");
             }
         }
@@ -235,7 +297,6 @@ function TenantsManager() {
                         </div>
                         <form onSubmit={handleUpdate} className="space-y-6">
                             
-                            {/* SEÇÃO GOD MODE: ASSINATURA E STATUS */}
                             <div className="bg-indigo-50 p-5 rounded-[1.5rem] border border-indigo-100">
                                 <h4 className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-3 flex items-center gap-1"><Power size={14}/> Gestão de Assinatura & Status</h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -322,6 +383,14 @@ function TenantsManager() {
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
+                        <button 
+                            onClick={() => handleImpersonate(t.id, t.nome)}
+                            className="flex items-center gap-2 text-emerald-600 hover:text-white hover:bg-emerald-500 font-bold text-xs bg-emerald-50 border border-emerald-100 px-4 py-3 rounded-xl transition-all"
+                            title="Entrar no Painel deste Condomínio"
+                        >
+                            <LayoutDashboard size={16}/> Acessar
+                        </button>
+
                         <button onClick={() => setEditingTenant(t)} className="flex items-center gap-2 text-slate-500 hover:text-white hover:bg-blue-600 font-bold text-xs bg-slate-100 px-5 py-3 rounded-xl transition-all">
                             <Edit size={16}/> Gerenciar
                         </button>
@@ -677,27 +746,32 @@ function CreateAdminForm() {
     );
 }
 
-// 8. STATS VIEW (CORRIGIDO PARA MOSTRAR OS DADOS DO BACKEND)
+// 8. STATS VIEW (AGORA COM HISTÓRICO DE LATÊNCIA)
 function StatsView() {
-  const [stats, setStats] = useState<AdminDashboardStats | null>(null);
-  const [latency, setLatency] = useState(0);
-
+  const [stats, setStats] = useState<any>(null);
+  const [latencyHistory, setLatencyHistory] = useState<number[]>([]);
+  const [currentLatency, setCurrentLatency] = useState(0);
+  
   useEffect(() => {
-    let isMounted = true;
-    const fetchData = async () => {
-      const start = Date.now();
-      try {
-        const res = await api.get('/admin/dashboard-stats');
-        if (isMounted) { 
-            setLatency(Date.now() - start); 
-            // Agora o TypeScript sabe que os campos totalTenants, activeTenants e mrr existem
-            if(res.data) setStats(res.data);
-        }
-      } catch (e) { console.error(e); }
+    const load = async () => {
+        const start = Date.now();
+        try {
+            const res = await api.get('/admin/dashboard-stats');
+            const end = Date.now();
+            const latency = end - start;
+            
+            setCurrentLatency(latency);
+            setLatencyHistory(prev => {
+                const newHistory = [...prev, latency];
+                return newHistory.slice(-20); // Mantém os últimos 20 pontos
+            });
+            setStats(res.data);
+        } catch(e) {}
     };
-    fetchData();
-    const interval = setInterval(fetchData, 5000); // 5 segundos
-    return () => { isMounted = false; clearInterval(interval); };
+    load(); // Carregamento inicial
+
+    const interval = setInterval(load, 3000); // Polling a cada 3 segundos
+    return () => clearInterval(interval);
   }, []);
 
   const formatMoney = (val: number | string | undefined) => {
@@ -706,35 +780,59 @@ function StatsView() {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-      <div className="bg-slate-900 text-white p-8 rounded-[2.5rem] shadow-xl border-b-8 border-blue-500">
-        <Activity className="text-blue-400 mb-2" size={32} />
-        <p className="text-blue-200/50 text-[10px] font-black uppercase mb-1">Latência</p>
-        <p className={`text-4xl font-black ${latency > 250 ? 'text-red-400' : 'text-emerald-400'}`}>{latency}ms</p>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+      {/* 1. CARD ONLINE USERS */}
+      <div className="bg-slate-900 text-white p-8 rounded-[2.5rem] shadow-xl border-b-8 border-emerald-500 relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-4 opacity-10">
+            <Activity size={100} />
+        </div>
+        <div className="relative z-10">
+            <div className="flex items-center gap-2 mb-2">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                </span>
+                <p className="text-emerald-400 text-[10px] font-black uppercase">Online Agora</p>
+            </div>
+            <p className="text-4xl font-black text-white">{stats?.onlineUsers || 0}</p>
+            <p className="text-xs text-slate-500 mt-1 font-bold">Usuários conectados</p>
+        </div>
+      </div>
+
+      {/* 2. CARD LATÊNCIA (NOVO) */}
+      <div className="bg-slate-900 text-white p-8 rounded-[2.5rem] shadow-xl border-b-8 border-blue-500 relative overflow-hidden">
+         <div className="relative z-10 flex flex-col h-full justify-between">
+            <div>
+                <div className="flex items-center gap-2 mb-1">
+                    <Activity size={14} className="text-blue-400"/>
+                    <p className="text-blue-400 text-[10px] font-black uppercase">Latência API</p>
+                </div>
+                <p className={`text-4xl font-black ${currentLatency > 300 ? 'text-red-400' : 'text-emerald-400'}`}>
+                    {currentLatency}ms
+                </p>
+            </div>
+            {/* Sparkline (Gráfico de Barras CSS) */}
+            <div className="flex items-end gap-1 h-8 mt-2 opacity-50">
+                {latencyHistory.map((val, idx) => (
+                    <div 
+                        key={idx} 
+                        className={`w-2 rounded-t-sm ${val > 300 ? 'bg-red-500' : 'bg-blue-500'}`} 
+                        style={{ height: `${Math.min(100, Math.max(10, (val / 500) * 100))}%` }} // Altura proporcional
+                        title={`${val}ms`}
+                    />
+                ))}
+            </div>
+         </div>
       </div>
       
-      {/* CORREÇÃO: Usando stats.totalTenants vindo do backend */}
-      <StatCard 
-        icon={<Building />} 
-        color="blue" 
-        title="Condomínios Totais" 
-        value={stats ? stats.totalTenants : '-'} 
-      />
+      {/* 3. Tenants */}
+      <StatCard icon={<Building />} color="blue" title="Condomínios" value={stats?.totalTenants || 0} />
       
-      <StatCard 
-        icon={<Users />} 
-        color="purple" 
-        title="Usuários na Base" 
-        value={stats ? stats.totalUsers : '-'} 
-      />
+      {/* 4. Users */}
+      <StatCard icon={<Users />} color="purple" title="Total Usuários" value={stats?.totalUsers || 0} />
       
-      {/* CORREÇÃO: Usando stats.mrr vindo do backend */}
-      <StatCard 
-        icon={<DollarSign />} 
-        color="emerald" 
-        title="MRR Estimado" 
-        value={formatMoney(stats?.mrr)} 
-      />
+      {/* 5. MRR */}
+      <StatCard icon={<DollarSign />} color="emerald" title="MRR Mensal" value={formatMoney(stats?.mrr)} />
     </div>
   );
 }
@@ -746,7 +844,7 @@ const StatCard = ({ icon, title, value, color }: any) => (
   </div>
 );
 
-// 9. ADMIN PROFILE VIEW
+// 9. ADMIN PROFILE VIEW (Mantido)
 function AdminProfileView({ user }: { user: any }) {
     const [showPassword, setShowPassword] = useState(false);
     const [form, setForm] = useState({

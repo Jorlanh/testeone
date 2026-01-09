@@ -27,10 +27,25 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   // ID do Super Admin (Deve ser igual ao do Backend)
   const SUPER_ADMIN_ID = "10000000-0000-0000-0000-000000000000";
+  
+  // Verifica se existe um token de admin salvo (Modo Espião)
+  const superAdminToken = localStorage.getItem('@Votzz:superAdminToken');
 
   const handleLogout = () => {
     if (signOut) signOut();
     navigate('/'); 
+  };
+
+  // Função para Voltar ao God Mode (Painel de Admin)
+  const handleBackToGodMode = () => {
+      if (superAdminToken) {
+          // Restaura o token original
+          localStorage.setItem('@Votzz:token', superAdminToken);
+          // Remove o backup
+          localStorage.removeItem('@Votzz:superAdminToken');
+          // Força recarregamento para o App pegar o contexto de Admin novamente
+          window.location.href = '/admin/dashboard';
+      }
   };
 
   const isActive = (path: string) => location.pathname === path;
@@ -241,6 +256,23 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
       {/* --- MAIN CONTENT --- */}
       <main className="flex-1 md:ml-64 p-4 md:p-8 mt-16 md:mt-0 overflow-x-hidden w-full">
+        
+        {/* BARRA DE AVISO DE IMPERSONATION (BOTÃO DE VOLTAR) */}
+        {superAdminToken && (
+            <div className="bg-red-600 text-white px-6 py-3 rounded-xl mb-6 flex justify-between items-center shadow-lg shadow-red-200 animate-pulse transition-all">
+                <div className="flex items-center gap-2 font-bold">
+                    <span className="bg-white text-red-600 px-2 py-0.5 rounded text-xs uppercase font-black tracking-wider">Modo Espião</span>
+                    Você está acessando como Administrador do Sistema
+                </div>
+                <button 
+                    onClick={handleBackToGodMode}
+                    className="bg-white text-red-600 px-4 py-2 rounded-lg font-black text-xs uppercase hover:bg-red-50 transition-colors shadow-sm"
+                >
+                    Voltar para Votzz Admin
+                </button>
+            </div>
+        )}
+
         {children}
       </main>
     </div>

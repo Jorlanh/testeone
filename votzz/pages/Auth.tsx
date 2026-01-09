@@ -58,13 +58,14 @@ const Auth: React.FC = () => {
 
     try {
       if (isLogin) {
-        // LÓGICA DE LOGIN COM ENDPOINT CORRIGIDO (/api/auth/login)
+        // CORREÇÃO: Removemos o "/api" pois o axios (api.ts) já o inclui na baseURL.
+        // URL Final será: http://localhost:8080/api/auth/login
         const payload: LoginRequest = { 
             login: loginInput, 
             password 
         };
 
-        const response = await api.post('/api/auth/login', payload);
+        const response = await api.post('/auth/login', payload);
         const userData = response.data;
         login(userData);
         
@@ -75,14 +76,15 @@ const Auth: React.FC = () => {
         }
 
       } else {
-        // CADASTRO COM ENDPOINT CORRIGIDO (/api/auth/register-resident)
+        // CORREÇÃO: Removemos o "/api" aqui também.
+        // URL Final será: http://localhost:8080/api/auth/register-resident
         if (password !== confirmPassword) {
           setError('As senhas não coincidem.');
           setLoading(false);
           return;
         }
 
-        await api.post('/api/auth/register-resident', { 
+        await api.post('/auth/register-resident', { 
           nome, 
           email, 
           password, 

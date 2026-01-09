@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
+import SockJS from 'sockjs-client';
+import { Client } from '@stomp/stompjs';
 
 // Páginas Públicas
 import LandingPage from './pages/LandingPage';
@@ -52,10 +54,37 @@ const PrivateRoute = ({ children, allowedRoles }: { children: React.ReactNode, a
   return <>{children}</>;
 };
 
-function App() {
-  return (
-    <AuthProvider>
-      <Router>
+// Componente interno para isolar o uso do hook de contexto e socket
+const AppContent: React.FC = () => {
+    // LÓGICA DO WEBSOCKET PARA CONTAGEM ONLINE
+    useEffect(() => {
+        // Só conecta se tiver token (usuário logado)
+        const token = localStorage.getItem('@Votzz:token');
+        if (!token) return;
+
+        const socket = new SockJS('http://localhost:8080/ws-votzz');
+        const stompClient = new Client({
+            webSocketFactory: () => socket,
+            connectHeaders: { Authorization: `Bearer ${token}` },
+            onConnect: () => {
+                console.log("WebSocket Conectado (Contabilizando Online)");
+            },
+            onDisconnect: () => {
+                console.log("WebSocket Desconectado");
+            },
+            // Desativar logs de debug no console se preferir
+            debug: () => {} 
+        });
+
+        stompClient.activate();
+
+        return () => {
+            stompClient.deactivate();
+        };
+    }, []); // Executa uma vez na montagem
+
+    return (
+        <Router>
         <Routes>
           {/* --- ROTAS PÚBLICAS (Ainda esperam user={null}) --- */}
           <Route path="/" element={<LandingPage user={null} />} />
@@ -152,6 +181,13 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
+    );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
     </AuthProvider>
   );
 }
