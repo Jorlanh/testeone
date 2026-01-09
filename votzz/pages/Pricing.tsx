@@ -12,7 +12,7 @@ const PLAN_IDS = {
 
 // Lista de Benefícios Padrão (Atualizada com App)
 const COMMON_BENEFITS = [
-  "Aplicativo Moradores (iOS/Android)", // Novo Item
+  "Aplicativo Moradores (iOS/Android)", 
   "Votação em Tempo Real",
   "Assembleia Digital ao Vivo",
   "Ata Automática",
@@ -79,21 +79,34 @@ export function Pricing() {
 
   const activePlan = calculatePrice(units, cycle);
 
+  // --- LÓGICA DE INSCRIÇÃO CORRIGIDA PARA MÓDULO HÍBRIDO ---
   const handleSubscribe = () => {
-    navigate('/register-condo', { 
-      state: { 
-        planId: activePlan.planId,
-        preFilledUnits: units,
-        preFilledCycle: cycle 
-      } 
-    });
+    const planType = activePlan.planName.toUpperCase();
+    
+    if (planType === 'CUSTOM') {
+      // Custom: fluxo interno via backend/Asaas
+      navigate('/register-condo', { 
+        state: { 
+          planId: activePlan.planId,
+          planType: 'CUSTOM',
+          preFilledUnits: units,
+          preFilledCycle: cycle 
+        } 
+      });
+    } else {
+      // Essencial/Business: Redireciona para o link fixo da Kiwify
+      const kiwifyLinks: Record<string, string> = {
+        'ESSENCIAL': 'https://pay.kiwify.com.br/SEU_LINK_ESSENCIAL',
+        'BUSINESS': 'https://pay.kiwify.com.br/SEU_LINK_BUSINESS'
+      };
+      window.location.href = kiwifyLinks[planType];
+    }
   };
 
   // Componente de Benefícios
   const BenefitsList = ({ isDark }: { isDark: boolean }) => (
     <ul className={`space-y-3 text-sm mb-8 flex-1 text-left ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
       
-      {/* Destaque para o App */}
       <li className="flex gap-2 items-start font-bold">
         <Smartphone className="text-emerald-500 flex-shrink-0" size={18}/> 
         <span>Aplicativo Votzz (iOS/Android)</span>
@@ -106,7 +119,6 @@ export function Pricing() {
         </li>
       ))}
       
-      {/* Item Especial: Reservas */}
       <li className="flex gap-2 items-start relative group cursor-help">
         <Check className="text-emerald-500 flex-shrink-0" size={18}/>
         <div>
@@ -136,7 +148,6 @@ export function Pricing() {
   const getCardClasses = (planName: string) => {
     const isActive = activePlan.planName === planName;
     if (isActive) {
-      // Removido o scale-105 do card ativo para evitar conflito visual com a tag popular
       return "pricing-card active-card bg-slate-900 text-white border-emerald-500 ring-2 ring-emerald-500/50 shadow-2xl z-10 relative overflow-hidden";
     }
     return "pricing-card bg-white text-slate-800 border-slate-200 opacity-80 hover:opacity-100 z-0 relative overflow-hidden";
@@ -150,7 +161,6 @@ export function Pricing() {
          <p className="text-slate-400">Transparência total para seu condomínio</p>
       </header>
 
-      {/* Seção de Simulação - Removido rounded-b-[3rem] para tirar a curva */}
       <section className="bg-slate-900 pb-20 pt-10 px-4 shadow-xl">
         <div className="max-w-4xl mx-auto bg-slate-800 rounded-2xl p-6 border border-slate-700 shadow-2xl">
           <div className="text-center mb-6">
@@ -191,31 +201,28 @@ export function Pricing() {
             <h3 className="text-xl font-bold mb-2">Essencial</h3>
             <p className={`text-sm mb-4 ${activePlan.planName === 'Essencial' ? 'text-slate-400' : 'text-slate-500'}`}>Para condomínios pequenos</p>
             <div className="text-4xl font-extrabold mb-1">
-              {/* Se for o plano ativo, usa o valor calculado (para mostrar coerência). Se não, mostra o valor cheio do plano (30un) */}
               {activePlan.planName === 'Essencial' 
                 ? Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(activePlan.finalPrice)
                 : Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(getStaticPrice('Essencial'))}
             </div>
             <p className={`text-xs mb-6 font-medium uppercase ${activePlan.planName === 'Essencial' ? 'text-slate-500' : 'text-slate-400'}`}>{cycle}</p>
             <BenefitsList isDark={activePlan.planName === 'Essencial'} />
-            {activePlan.planName === 'Essencial' && <button onClick={handleSubscribe} className="btn-subscribe text-slate-900 bg-white hover:bg-emerald-50">Contratar Essencial</button>}
+            <button onClick={handleSubscribe} className="btn-subscribe text-slate-900 bg-white hover:bg-emerald-50">Contratar Essencial</button>
           </div>
 
           {/* CARD 2: BUSINESS */}
           <div className={getCardClasses('Business')}>
-            {/* Tag Popular corrigida: removido o absolute top-0 right-0 e a borda arredondada inferior esquerda, adicionado posicionamento relativo ao card */}
             <div className="bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-tr-lg rounded-bl-lg absolute top-0 right-0">POPULAR</div>
             <h3 className="text-xl font-bold mb-2 mt-4">Business</h3>
             <p className={`text-sm mb-4 ${activePlan.planName === 'Business' ? 'text-slate-400' : 'text-slate-500'}`}>O melhor custo-benefício</p>
             <div className="text-4xl font-extrabold mb-1">
-               {/* Lógica: Se ativo, valor calculado. Se inativo, valor cheio do plano (80un) */}
                {activePlan.planName === 'Business' 
                 ? Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(activePlan.finalPrice)
                 : Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(getStaticPrice('Business'))}
             </div>
             <p className={`text-xs mb-6 font-medium uppercase ${activePlan.planName === 'Business' ? 'text-slate-500' : 'text-slate-400'}`}>{cycle}</p>
             <BenefitsList isDark={activePlan.planName === 'Business'} />
-            {activePlan.planName === 'Business' && <button onClick={handleSubscribe} className="btn-subscribe text-slate-900 bg-white hover:bg-emerald-50">Contratar Business</button>}
+            <button onClick={handleSubscribe} className="btn-subscribe text-slate-900 bg-white hover:bg-emerald-50">Contratar Business</button>
           </div>
 
           {/* CARD 3: CUSTOM */}
@@ -223,7 +230,6 @@ export function Pricing() {
              <h3 className="text-xl font-bold mb-2 flex items-center gap-2"><Crown size={20} className="text-amber-400"/> Custom</h3>
             <p className={`text-sm mb-4 ${activePlan.planName === 'Custom' ? 'text-slate-400' : 'text-slate-500'}`}>Para grandes empreendimentos</p>
             <div className="text-4xl font-extrabold mb-1">
-               {/* Custom só mostra valor se estiver ativo (calculado). Senão, mostra "Sob Consulta" ou base */}
                {activePlan.planName === 'Custom' 
                 ? Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(activePlan.finalPrice)
                 : 'R$ ---'}
@@ -238,7 +244,7 @@ export function Pricing() {
             )}
 
             <BenefitsList isDark={activePlan.planName === 'Custom'} />
-            {activePlan.planName === 'Custom' && <button onClick={handleSubscribe} className="btn-subscribe text-slate-900 bg-white hover:bg-emerald-50">Contratar Custom</button>}
+            <button onClick={handleSubscribe} className="btn-subscribe text-slate-900 bg-white hover:bg-emerald-50">Contratar Custom</button>
           </div>
 
         </div>
@@ -259,7 +265,7 @@ export function Pricing() {
           transition: all 0.3s ease;
           display: flex;
           flex-direction: column;
-          min-height: 750px; /* Aumentado para caber o novo item */
+          min-height: 750px; 
         }
         .btn-subscribe {
           width: 100%;
@@ -269,6 +275,8 @@ export function Pricing() {
           text-align: center;
           transition: all 0.2s;
           margin-top: auto; 
+          border: none;
+          cursor: pointer;
         }
       `}</style>
     </div>

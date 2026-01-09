@@ -18,7 +18,6 @@ const Auth: React.FC = () => {
   const [error, setError] = useState('');
 
   // Estados do Formulário
-  // [MODIFICAÇÃO]: loginInput usado para a tela de Login (E-mail ou CPF)
   const [loginInput, setLoginInput] = useState(''); 
   
   // Campos Específicos de Cadastro
@@ -59,17 +58,13 @@ const Auth: React.FC = () => {
 
     try {
       if (isLogin) {
-        // --- LÓGICA DE LOGIN HÍBRIDO ---
-        
-        // Limpa formatação básica se for CPF (opcional, o backend também pode tratar)
-        // const cleanLogin = loginInput.replace(/[^\w\s@.]/gi, ''); 
-        
+        // LÓGICA DE LOGIN COM ENDPOINT CORRIGIDO (/api/auth/login)
         const payload: LoginRequest = { 
-            login: loginInput, // Envia o valor digitado no campo "E-mail ou CPF"
+            login: loginInput, 
             password 
         };
 
-        const response = await api.post('/auth/login', payload);
+        const response = await api.post('/api/auth/login', payload);
         const userData = response.data;
         login(userData);
         
@@ -80,15 +75,14 @@ const Auth: React.FC = () => {
         }
 
       } else {
-        // --- CADASTRO DE MORADOR ---
-        
+        // CADASTRO COM ENDPOINT CORRIGIDO (/api/auth/register-resident)
         if (password !== confirmPassword) {
           setError('As senhas não coincidem.');
           setLoading(false);
           return;
         }
 
-        await api.post('/auth/register-resident', { 
+        await api.post('/api/auth/register-resident', { 
           nome, 
           email, 
           password, 
@@ -102,13 +96,12 @@ const Auth: React.FC = () => {
         
         alert('Cadastro realizado com sucesso! Faça login para entrar.');
         setIsLogin(true);
-        // Limpa campos sensíveis
         setPassword('');
         setConfirmPassword('');
       }
     } catch (err: any) {
       console.error(err);
-      const msg = err.response?.data || err.message || 'Erro na operação. Verifique os dados.';
+      const msg = err.response?.data?.message || err.response?.data || err.message || 'Erro na operação.';
       setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
     } finally {
       setLoading(false);
@@ -120,7 +113,14 @@ const Auth: React.FC = () => {
       
       {isAffiliateContext && (
         <div className="absolute top-0 right-0 p-10 opacity-5 pointer-events-none">
-           <TrendingUp className="w-96 h-96 text-emerald-500" />
+            <TrendingUp className="w-96 h-96 text-emerald-500" />
+        </div>
+      )}
+
+      {/* Ícone de Fingerprint de fundo para login comum */}
+      {!isAffiliateContext && isLogin && (
+        <div className="absolute -bottom-20 -left-20 p-10 opacity-5 pointer-events-none">
+            <Fingerprint className="w-96 h-96 text-emerald-500" />
         </div>
       )}
 
@@ -150,7 +150,6 @@ const Auth: React.FC = () => {
 
           <form onSubmit={handleAuth} className="space-y-5">
             
-            {/* --- CAMPOS DE CADASTRO (APENAS QUANDO !isLogin) --- */}
             {!isLogin && (
               <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
                 
@@ -172,7 +171,6 @@ const Auth: React.FC = () => {
                   <input type="text" placeholder="Nome Completo" value={nome} onChange={e => setNome(e.target.value)} className="w-full bg-slate-900 text-white pl-10 p-3 border border-slate-700 rounded-lg focus:border-emerald-500 outline-none" required />
                 </div>
 
-                {/* E-mail específico para cadastro */}
                 <div className="relative">
                     <Mail className="absolute left-3 top-3 h-5 w-5 text-slate-500" />
                     <input type="email" value={email} placeholder="Seu melhor E-mail" onChange={e => setEmail(e.target.value)} className="w-full bg-slate-900 text-white pl-10 p-3 border border-slate-700 rounded-lg focus:border-emerald-500 outline-none" required />
@@ -193,12 +191,11 @@ const Auth: React.FC = () => {
               </div>
             )}
 
-            {/* --- CAMPO DE LOGIN (APENAS QUANDO isLogin) --- */}
             {isLogin && (
                 <div className="relative animate-in fade-in duration-300">
                     <UserIcon className="absolute left-3 top-3 h-5 w-5 text-slate-500" />
                     <input 
-                        type="text" // Type text para aceitar CPF ou Email
+                        type="text" 
                         value={loginInput} 
                         placeholder="E-mail ou CPF" 
                         onChange={e => setLoginInput(e.target.value)} 
@@ -208,13 +205,11 @@ const Auth: React.FC = () => {
                 </div>
             )}
 
-            {/* --- CAMPO DE SENHA (COMUM) --- */}
             <div className="relative">
               <Lock className="absolute left-3 top-3 h-5 w-5 text-slate-500" />
               <input type="password" placeholder="Sua Senha" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-slate-900 text-white pl-10 p-3 border border-slate-700 rounded-lg focus:border-emerald-500 outline-none transition-all" required />
             </div>
 
-            {/* [NOVO] LINK DE ESQUECI A SENHA */}
             {isLogin && (
                 <div className="flex justify-end -mt-3">
                     <Link to="/forgot-password" className="text-xs text-emerald-500 hover:text-emerald-400 hover:underline transition-colors">
@@ -223,7 +218,6 @@ const Auth: React.FC = () => {
                 </div>
             )}
 
-            {/* --- CONFIRMAÇÃO DE SENHA (SÓ NO CADASTRO) --- */}
             {!isLogin && (
               <>
                 <div className="relative animate-in slide-in-from-top-1">
