@@ -4,7 +4,8 @@ import { Lock, Mail, ShieldCheck, ArrowRight, AlertCircle, User as UserIcon, Tre
 import { Logo } from '../components/Logo';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { LoginRequest } from '../types';
+// Remova ou ajuste a importação de LoginRequest se ela conflitar com a nova estrutura, 
+// ou use 'any' no payload como feito abaixo para flexibilidade imediata.
 
 const Auth: React.FC = () => {
   const location = useLocation();
@@ -17,12 +18,16 @@ const Auth: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Estados do Formulário
+  // Estados do Formulário de Login
   const [loginInput, setLoginInput] = useState(''); 
+  const [password, setPassword] = useState('');
   
+  // Estados para Múltiplos Perfis
+  const [showProfileSelector, setShowProfileSelector] = useState(false);
+  const [availableProfiles, setAvailableProfiles] = useState<any[]>([]);
+
   // Campos Específicos de Cadastro
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [nome, setNome] = useState('');
   const [cpf, setCpf] = useState('');
@@ -51,65 +56,129 @@ const Auth: React.FC = () => {
     }
   };
 
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Função para executar o login (com ou sem ID de perfil selecionado)
+  const executeLogin = async (profileId?: string) => {
     setLoading(true);
     setError('');
-
     try {
-      if (isLogin) {
-        // CORREÇÃO: Removemos o "/api" pois o axios (api.ts) já o inclui na baseURL.
-        // URL Final será: http://localhost:8080/api/auth/login
-        const payload: LoginRequest = { 
+        const payload: any = { 
             login: loginInput, 
-            password 
+            password,
+            selectedProfileId: profileId 
         };
 
         const response = await api.post('/auth/login', payload);
-        const userData = response.data;
-        login(userData);
+        const data = response.data;
+
+        // SE O BACKEND RETORNAR QUE EXISTEM MÚLTIPLOS PERFIS E NENHUM FOI SELECIONADO AINDA
+        if (data.multipleProfiles && !profileId) {
+            setAvailableProfiles(data.profiles);
+            setShowProfileSelector(true);
+            setLoading(false);
+            return;
+        }
+
+        // LOGIN BEM-SUCEDIDO
+        login(data);
         
-        switch (userData.role) {
+        switch (data.role) {
           case 'ADMIN': navigate('/admin/dashboard'); break;
           case 'AFILIADO': navigate('/affiliate/dashboard'); break;
           default: navigate('/dashboard');
         }
-
-      } else {
-        // CORREÇÃO: Removemos o "/api" aqui também.
-        // URL Final será: http://localhost:8080/api/auth/register-resident
-        if (password !== confirmPassword) {
-          setError('As senhas não coincidem.');
-          setLoading(false);
-          return;
-        }
-
-        await api.post('/auth/register-resident', { 
-          nome, 
-          email, 
-          password, 
-          cpf, 
-          whatsapp,
-          unidade, 
-          bloco,
-          condoIdentifier,
-          secretKeyword
-        });
-        
-        alert('Cadastro realizado com sucesso! Faça login para entrar.');
-        setIsLogin(true);
-        setPassword('');
-        setConfirmPassword('');
-      }
     } catch (err: any) {
-      console.error(err);
-      const msg = err.response?.data?.message || err.response?.data || err.message || 'Erro na operação.';
-      setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
-    } finally {
-      setLoading(false);
+        console.error(err);
+        const msg = err.response?.data?.message || err.response?.data || err.message || 'Erro na operação.';
+        setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+        setLoading(false);
     }
   };
 
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (isLogin) {
+        await executeLogin();
+    } else {
+        // --- CADASTRO DE MORADOR ---
+        setLoading(true);
+        try {
+            if (password !== confirmPassword) {
+              setError('As senhas não coincidem.');
+              setLoading(false);
+              return;
+            }
+
+            await api.post('/auth/register-resident', { 
+              nome, 
+              email, 
+              password, 
+              cpf, 
+              whatsapp,
+              unidade, 
+              bloco,
+              condoIdentifier,
+              secretKeyword
+            });
+            
+            alert('Cadastro realizado com sucesso! Faça login para entrar.');
+            setIsLogin(true);
+            setPassword('');
+            setConfirmPassword('');
+        } catch (err: any) {
+            console.error(err);
+            const msg = err.response?.data?.message || err.response?.data || err.message || 'Erro no cadastro.';
+            setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+        } finally {
+            setLoading(false);
+        }
+    }
+  };
+
+  // --- RENDERIZAÇÃO DO SELETOR DE PERFIL ---
+  if (showProfileSelector) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
+             <div className="bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md border border-slate-700 p-8 animate-in zoom-in-95 duration-300">
+                <div className="text-center mb-6">
+                    <Logo theme="dark" size="lg" />
+                    <h2 className="text-white font-bold text-xl mt-4">Escolha uma conta</h2>
+                    <p className="text-slate-400 text-sm">Identificamos múltiplos perfis para suas credenciais.</p>
+                </div>
+                
+                <div className="space-y-3">
+                    {availableProfiles.map((profile) => (
+                        <button
+                            key={profile.id}
+                            onClick={() => executeLogin(profile.id)}
+                            className="w-full bg-slate-700 hover:bg-slate-600 border border-slate-600 p-4 rounded-xl flex items-center justify-between group transition-all"
+                        >
+                            <div className="text-left">
+                                <h3 className="font-bold text-white group-hover:text-emerald-400 transition-colors">{profile.tenantName || 'Conta Global'}</h3>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-xs bg-slate-900 text-slate-300 px-2 py-1 rounded uppercase font-bold tracking-wide">
+                                        {profile.role === 'ADM_CONDO' ? 'ADMIN' : profile.role}
+                                    </span>
+                                    <span className="text-xs text-slate-500">{profile.nome}</span>
+                                </div>
+                            </div>
+                            <ArrowRight className="text-slate-500 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
+                        </button>
+                    ))}
+                </div>
+
+                <button 
+                    onClick={() => { setShowProfileSelector(false); setLoginInput(''); setPassword(''); }}
+                    className="w-full mt-6 text-slate-400 hover:text-white text-sm underline"
+                >
+                    Voltar e usar outro login
+                </button>
+             </div>
+        </div>
+      );
+  }
+
+  // --- RENDERIZAÇÃO PADRÃO (LOGIN/CADASTRO) ---
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4 relative overflow-hidden">
       
@@ -119,7 +188,6 @@ const Auth: React.FC = () => {
         </div>
       )}
 
-      {/* Ícone de Fingerprint de fundo para login comum */}
       {!isAffiliateContext && isLogin && (
         <div className="absolute -bottom-20 -left-20 p-10 opacity-5 pointer-events-none">
             <Fingerprint className="w-96 h-96 text-emerald-500" />
