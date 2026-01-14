@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Calculator, Building, Crown, Info, Smartphone } from 'lucide-react';
+import { Check, Calculator, Building, Crown, Info, Smartphone, Gift, AlertCircle } from 'lucide-react';
 import Layout from '../components/Layout'; 
 
 // IDs dos Planos
@@ -10,9 +10,9 @@ const PLAN_IDS = {
   CUSTOM: '33333333-3333-3333-3333-333333333333'
 };
 
-// Lista de Benefícios Padrão (Atualizada com App)
+// Lista de Benefícios Padrão (Atualizada)
 const COMMON_BENEFITS = [
-  "Aplicativo Moradores (iOS/Android)", 
+  "Aplicativo Votzz (iOS/Android)", 
   "Votação em Tempo Real",
   "Assembleia Digital ao Vivo",
   "Ata Automática",
@@ -48,7 +48,8 @@ export function Pricing() {
     } else {
       planName = 'Custom';
       const extra = inputUnits - 80;
-      monthlyBase = 490.00 + (extra * 2.50);
+      // [ATUALIZADO] 1.50 por unidade extra conforme pedido
+      monthlyBase = 490.00 + (extra * 1.50);
       planId = PLAN_IDS.CUSTOM;
     }
 
@@ -79,28 +80,66 @@ export function Pricing() {
 
   const activePlan = calculatePrice(units, cycle);
 
-  // --- LÓGICA DE INSCRIÇÃO CORRIGIDA PARA MÓDULO HÍBRIDO ---
+  // --- LÓGICA DE INSCRIÇÃO / PAGAMENTO ---
   const handleSubscribe = () => {
     const planType = activePlan.planName.toUpperCase();
     
+    // Links Kiwify fornecidos para Essencial e Business
+    const kiwifyLinks: Record<string, Record<string, string>> = {
+        'ESSENCIAL': {
+            'TRIMESTRAL': 'https://pay.kiwify.com.br/SEU_LINK_ESSENCIAL_TRIMESTRAL',
+            'ANUAL': 'https://pay.kiwify.com.br/SEU_LINK_ESSENCIAL_ANUAL'
+        },
+        'BUSINESS': {
+            'TRIMESTRAL': 'https://pay.kiwify.com.br/SEU_LINK_BUSINESS_TRIMESTRAL',
+            'ANUAL': 'https://pay.kiwify.com.br/SEU_LINK_BUSINESS_ANUAL'
+        }
+    };
+
     if (planType === 'CUSTOM') {
-      // Custom: fluxo interno via backend/Asaas
+      // Custom: fluxo interno via backend/Asaas (valor dinâmico)
       navigate('/register-condo', { 
         state: { 
           planId: activePlan.planId,
           planType: 'CUSTOM',
           preFilledUnits: units,
-          preFilledCycle: cycle 
+          preFilledCycle: cycle,
+          isFreeTrial: false, // Custom geralmente já negocia pagando, ou pode ser trial
+          customPrice: activePlan.finalPrice
         } 
       });
     } else {
       // Essencial/Business: Redireciona para o link fixo da Kiwify
-      const kiwifyLinks: Record<string, string> = {
-        'ESSENCIAL': 'https://pay.kiwify.com.br/SEU_LINK_ESSENCIAL',
-        'BUSINESS': 'https://pay.kiwify.com.br/SEU_LINK_BUSINESS'
-      };
-      window.location.href = kiwifyLinks[planType];
+      const link = kiwifyLinks[planType]?.[cycle];
+      if (link) {
+         // Agora, em vez de ir direto, vamos para o cadastro unificado
+         // E passamos o link de pagamento como destino final
+         navigate('/auth/condo-register', {
+             state: {
+                 planId: activePlan.planId,
+                 preFilledUnits: units,
+                 isTrial: false,
+                 paymentLink: link // Link Kiwify
+             }
+         });
+      } else {
+         console.error("Link de pagamento não configurado");
+      }
     }
+  };
+
+  // --- NOVA LÓGICA: TESTE GRÁTIS ---
+  const handleFreeTrial = () => {
+      // Redireciona para cadastro com flag de Trial
+      // ATENÇÃO: Certifique-se que esta rota existe no App.tsx!
+      navigate('/auth/condo-register', {
+          state: {
+              planId: activePlan.planId, // Salva o plano que ele "mirou", mas entra como trial
+              isTrial: true,
+              trialDays: 30,
+              preFilledUnits: units
+          }
+      });
   };
 
   // Componente de Benefícios
@@ -118,30 +157,6 @@ export function Pricing() {
           <span>{benefit}</span>
         </li>
       ))}
-      
-      <li className="flex gap-2 items-start relative group cursor-help">
-        <Check className="text-emerald-500 flex-shrink-0" size={18}/>
-        <div>
-          <span className="font-bold block">Reservas (PIX/Boleto)</span>
-          <span className={`text-xs ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
-            {cycle === 'ANUAL' 
-              ? 'Taxa Votzz ISENTA (Só tarifas bancárias)' 
-              : 'Taxa Votzz R$ 5,00 + Tarifas bancárias'}
-          </span>
-        </div>
-        <Info size={16} className="text-slate-400 mt-1 ml-1" />
-        
-        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 p-3 bg-slate-800 text-white text-xs rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 border border-slate-700">
-          <p className="font-bold mb-1 text-emerald-400">Tarifas de Transação (Asaas):</p>
-          <ul className="list-disc pl-3 space-y-1 text-slate-300">
-            <li>PIX: R$ 1,99 (Recebe na hora)</li>
-            <li>Boleto: R$ 1,99 (Compensa em D+1)</li>
-          </ul>
-          {cycle === 'TRIMESTRAL' && (
-            <p className="mt-2 pt-2 border-t border-slate-600 text-amber-400">+ R$ 5,00 da Votzz por reserva realizada.</p>
-          )}
-        </div>
-      </li>
     </ul>
   );
 
@@ -161,12 +176,18 @@ export function Pricing() {
          <p className="text-slate-400">Transparência total para seu condomínio</p>
       </header>
 
+      {/* Free Trial Banner */}
+      <div className="bg-emerald-600 text-white text-center py-3 px-4 font-bold text-sm md:text-base shadow-md relative z-20">
+          <Gift className="inline-block w-5 h-5 mr-2 mb-1" />
+          Plano Free: Todos os planos começam com 30 dias grátis! A cobrança só inicia na renovação.
+      </div>
+
       <section className="bg-slate-900 pb-20 pt-10 px-4 shadow-xl">
         <div className="max-w-4xl mx-auto bg-slate-800 rounded-2xl p-6 border border-slate-700 shadow-2xl">
           <div className="text-center mb-6">
             <h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
               <Calculator className="text-emerald-500" />
-              Simule o valor para seu condomínio
+              Simule o valor para renovação
             </h2>
             <p className="text-slate-400 text-sm mt-2">O plano é selecionado automaticamente baseado no número de unidades.</p>
           </div>
@@ -199,7 +220,7 @@ export function Pricing() {
           {/* CARD 1: ESSENCIAL */}
           <div className={getCardClasses('Essencial')}>
             <h3 className="text-xl font-bold mb-2">Essencial</h3>
-            <p className={`text-sm mb-4 ${activePlan.planName === 'Essencial' ? 'text-slate-400' : 'text-slate-500'}`}>Para condomínios pequenos</p>
+            <p className={`text-sm mb-4 ${activePlan.planName === 'Essencial' ? 'text-slate-400' : 'text-slate-500'}`}>Até 30 unidades</p>
             <div className="text-4xl font-extrabold mb-1">
               {activePlan.planName === 'Essencial' 
                 ? Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(activePlan.finalPrice)
@@ -207,14 +228,23 @@ export function Pricing() {
             </div>
             <p className={`text-xs mb-6 font-medium uppercase ${activePlan.planName === 'Essencial' ? 'text-slate-500' : 'text-slate-400'}`}>{cycle}</p>
             <BenefitsList isDark={activePlan.planName === 'Essencial'} />
-            <button onClick={handleSubscribe} className="btn-subscribe text-slate-900 bg-white hover:bg-emerald-50">Contratar Essencial</button>
+            
+            {/* Botões de Ação */}
+            <div className="mt-auto space-y-3">
+                <button onClick={handleFreeTrial} className="w-full py-3 rounded-lg font-bold bg-emerald-500 text-white hover:bg-emerald-600 shadow-lg">
+                    Começar 30 Dias Grátis
+                </button>
+                <button onClick={handleSubscribe} className="w-full py-2 rounded-lg text-sm font-medium border border-current opacity-70 hover:opacity-100">
+                    Pagar Agora
+                </button>
+            </div>
           </div>
 
           {/* CARD 2: BUSINESS */}
           <div className={getCardClasses('Business')}>
             <div className="bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-tr-lg rounded-bl-lg absolute top-0 right-0">POPULAR</div>
             <h3 className="text-xl font-bold mb-2 mt-4">Business</h3>
-            <p className={`text-sm mb-4 ${activePlan.planName === 'Business' ? 'text-slate-400' : 'text-slate-500'}`}>O melhor custo-benefício</p>
+            <p className={`text-sm mb-4 ${activePlan.planName === 'Business' ? 'text-slate-400' : 'text-slate-500'}`}>31 a 80 Unidades</p>
             <div className="text-4xl font-extrabold mb-1">
                {activePlan.planName === 'Business' 
                 ? Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(activePlan.finalPrice)
@@ -222,13 +252,22 @@ export function Pricing() {
             </div>
             <p className={`text-xs mb-6 font-medium uppercase ${activePlan.planName === 'Business' ? 'text-slate-500' : 'text-slate-400'}`}>{cycle}</p>
             <BenefitsList isDark={activePlan.planName === 'Business'} />
-            <button onClick={handleSubscribe} className="btn-subscribe text-slate-900 bg-white hover:bg-emerald-50">Contratar Business</button>
+            
+             {/* Botões de Ação */}
+             <div className="mt-auto space-y-3">
+                <button onClick={handleFreeTrial} className="w-full py-3 rounded-lg font-bold bg-emerald-500 text-white hover:bg-emerald-600 shadow-lg">
+                    Começar 30 Dias Grátis
+                </button>
+                <button onClick={handleSubscribe} className="w-full py-2 rounded-lg text-sm font-medium border border-current opacity-70 hover:opacity-100">
+                    Pagar Agora
+                </button>
+            </div>
           </div>
 
           {/* CARD 3: CUSTOM */}
           <div className={getCardClasses('Custom')}>
              <h3 className="text-xl font-bold mb-2 flex items-center gap-2"><Crown size={20} className="text-amber-400"/> Custom</h3>
-            <p className={`text-sm mb-4 ${activePlan.planName === 'Custom' ? 'text-slate-400' : 'text-slate-500'}`}>Para grandes empreendimentos</p>
+            <p className={`text-sm mb-4 ${activePlan.planName === 'Custom' ? 'text-slate-400' : 'text-slate-500'}`}>Acima de 80 unidades</p>
             <div className="text-4xl font-extrabold mb-1">
                {activePlan.planName === 'Custom' 
                 ? Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(activePlan.finalPrice)
@@ -239,12 +278,21 @@ export function Pricing() {
             {activePlan.planName === 'Custom' && (
               <div className="bg-slate-800 p-3 rounded-lg text-xs text-slate-300 mb-6 border border-slate-700">
                 <p>Base Business (80 un): R$ 490,00</p>
-                <p className="text-emerald-400">+ R$ 2,50 por unidade extra</p>
+                <p className="text-emerald-400">+ R$ 1,50 por unidade extra</p>
               </div>
             )}
 
             <BenefitsList isDark={activePlan.planName === 'Custom'} />
-            <button onClick={handleSubscribe} className="btn-subscribe text-slate-900 bg-white hover:bg-emerald-50">Contratar Custom</button>
+            
+             {/* Botões de Ação */}
+             <div className="mt-auto space-y-3">
+                <button onClick={handleFreeTrial} className="w-full py-3 rounded-lg font-bold bg-emerald-500 text-white hover:bg-emerald-600 shadow-lg">
+                    Começar 30 Dias Grátis
+                </button>
+                <button onClick={handleSubscribe} className="w-full py-2 rounded-lg text-sm font-medium border border-current opacity-70 hover:opacity-100">
+                    Contratar Custom
+                </button>
+            </div>
           </div>
 
         </div>
@@ -265,7 +313,7 @@ export function Pricing() {
           transition: all 0.3s ease;
           display: flex;
           flex-direction: column;
-          min-height: 750px; 
+          min-height: 800px; 
         }
         .btn-subscribe {
           width: 100%;

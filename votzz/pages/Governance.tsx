@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   BarChart2, CheckSquare, Megaphone, Calendar as CalendarIcon, Plus, Clock, 
   AlertCircle, FileText, UserCheck, Bell, Star as StarIcon, Gavel, ShieldCheck, X, CheckCircle, ChevronRight,
-  Edit2, Trash2, Download, Archive, Eye, Target, Printer
+  Edit2, Trash2, Download, Archive, Eye, Target, Printer, Layers
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -30,6 +30,11 @@ const Governance: React.FC = () => {
   const [subTab, setSubTab] = useState<'active' | 'archived'>('active'); 
   const [loading, setLoading] = useState(true);
 
+  // --- LÓGICA DE MULTI-UNIDADES ---
+  // Verifica quantas unidades o usuário tem neste condomínio para calcular o peso do voto
+  // (Lógica simulada baseada na existência do usuário, ideal vir do backend)
+  const myUnitCount = 1; // Em produção: user?.units?.length || 1;
+
   const canManage = ['SINDICO', 'MANAGER', 'ADM_CONDO'].includes(user?.role || '');
 
   // Forms States
@@ -49,26 +54,23 @@ const Governance: React.FC = () => {
 
   useEffect(() => {
     loadDashboard();
-  }, [user]); // Adicionei user na dependência para garantir que temos o ID
+  }, [user]);
 
   const loadDashboard = async () => {
     try {
         const response = await api.get('/governance/dashboard');
         const safeData = response.data || {};
         
-        // Inicializa estruturas vazias se vierem nulas
+        // Inicializa estruturas vazias se vierem nulas para evitar crash
         safeData.polls = safeData.polls || { active: [], archived: [] };
         safeData.announcements = safeData.announcements || { active: [], archived: [] };
         safeData.calendar = safeData.calendar || [];
         safeData.timeline = safeData.timeline || [];
         safeData.kpis = safeData.kpis || { activePolls: 0, unreadComms: 0, totalActions: 0, participationRate: 0 };
 
-        // --- CORREÇÃO CRÍTICA DO RELOAD ---
-        // Se o backend não calcular 'isReadByCurrentUser' corretamente, calculamos aqui no front
-        // Verificamos se o ID do usuário atual está dentro da lista 'readBy'
+        // Processa status de leitura
         const processAnnouncements = (list: any[]) => {
             return list.map(ann => {
-                // Se já estiver true, mantem. Se não, verifica a lista de IDs.
                 const userAlreadyRead = ann.isReadByCurrentUser || (ann.readBy && user?.id && ann.readBy.includes(user.id));
                 return { ...ann, isReadByCurrentUser: userAlreadyRead };
             });
@@ -76,7 +78,6 @@ const Governance: React.FC = () => {
 
         safeData.announcements.active = processAnnouncements(safeData.announcements.active);
         safeData.announcements.archived = processAnnouncements(safeData.announcements.archived);
-        // ----------------------------------
         
         setData(safeData);
     } catch (e) { 
@@ -90,6 +91,13 @@ const Governance: React.FC = () => {
 
   const handleVote = async (pollId: string, optionLabel: string) => {
       if (!data) return;
+
+      // Confirmação se tiver múltiplas unidades
+      if (myUnitCount > 1) {
+          const confirm = window.confirm(`Você possui ${myUnitCount} unidades. Seu voto será aplicado para todas elas. Confirmar?`);
+          if (!confirm) return;
+      }
+
       const allPolls = [...(data.polls.active || []), ...(data.polls.archived || [])];
       const poll = allPolls.find(p => p.id === pollId);
       const option = poll?.options.find((o: any) => o.label === optionLabel);
@@ -97,8 +105,12 @@ const Governance: React.FC = () => {
       if (!option) return;
 
       try {
-          await api.post(`/governance/polls/${pollId}/vote`, { optionId: option.id });
-          alert("Voto registrado com sucesso!");
+          // Envia flag para o backend replicar o voto
+          await api.post(`/governance/polls/${pollId}/vote`, { 
+              optionId: option.id,
+              applyToAllUnits: true 
+          });
+          alert(`Voto registrado com sucesso${myUnitCount > 1 ? ` (${myUnitCount}x)` : ''}!`);
           loadDashboard(); 
       } catch (e: any) { 
           alert("Erro ao votar: " + (e.response?.data?.message || e.message)); 
@@ -112,13 +124,12 @@ const Governance: React.FC = () => {
           setData(prevData => {
               if (!prevData) return null;
               
-              // Atualiza a lista ativa e arquivada
               const updateList = (list: any[]) => list.map(item => 
                   item.id === annId 
                   ? { 
                       ...item, 
-                      isReadByCurrentUser: true, // FORÇA VISUALMENTE COMO LIDO
-                      readBy: [...(item.readBy || []), user?.id] // Adiciona ID para consistência
+                      isReadByCurrentUser: true, 
+                      readBy: [...(item.readBy || []), user?.id] 
                     } 
                   : item
               );
@@ -150,28 +161,19 @@ const Governance: React.FC = () => {
       } catch (e) { alert("Erro ao excluir item."); }
   };
 
-  // --- DOWNLOAD PDF CORRIGIDO ---
   const handleDownloadPdf = async (pollId: string, title: string) => {
       try {
-          // Solicita o BLOB
           const response = await api.get(`/governance/polls/${pollId}/report`, { 
               responseType: 'blob',
-              headers: {
-                  'Accept': 'application/pdf'
-              }
+              headers: { 'Accept': 'application/pdf' }
           });
 
-          // Cria URL do objeto
           const blob = new Blob([response.data], { type: 'application/pdf' });
           const url = window.URL.createObjectURL(blob);
-          
-          // Cria link temporário
           const link = document.createElement('a');
           link.href = url;
           const safeTitle = title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
           link.setAttribute('download', `Auditoria_${safeTitle}.pdf`);
-          
-          // Simula clique e limpa
           document.body.appendChild(link);
           link.click();
           
@@ -409,9 +411,17 @@ const Governance: React.FC = () => {
 
                             <div className="flex justify-between mb-4 pr-20">
                                 <span className="bg-purple-100 text-purple-700 text-[10px] font-bold px-2 py-1 rounded">Conselho</span>
-                                <span className={`text-[10px] uppercase px-2 py-1 rounded font-bold ${poll.status === 'OPEN' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
-                                    {poll.status === 'OPEN' ? 'ABERTA' : 'ENCERRADA'}
-                                </span>
+                                <div className="flex gap-2">
+                                    <span className={`text-[10px] uppercase px-2 py-1 rounded font-bold ${poll.status === 'OPEN' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
+                                        {poll.status === 'OPEN' ? 'ABERTA' : 'ENCERRADA'}
+                                    </span>
+                                    {/* BADGE DE PESO MULTI-UNIDADE */}
+                                    {myUnitCount > 1 && !poll.userHasVoted && poll.status === 'OPEN' && (
+                                        <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1">
+                                            <Layers size={10}/> {myUnitCount}x Voto
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                             <h3 className="font-bold text-slate-900 text-lg mb-2">{poll.title}</h3>
                             <p className="text-sm text-slate-600 mb-6">{poll.description}</p>

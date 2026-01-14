@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import React, { useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -15,6 +16,7 @@ import Compliance from './pages/Compliance';
 
 // Autenticação e Registro
 import Auth from './pages/Auth';
+import SelectContext from './pages/auth/SelectContext';
 import CondoRegister from './pages/auth/CondoRegister';
 import { AffiliateRegister } from './pages/auth/AffiliateRegister';
 import ForgotPassword from './pages/ForgotPassword'; 
@@ -54,15 +56,18 @@ const PrivateRoute = ({ children, allowedRoles }: { children: React.ReactNode, a
   return <>{children}</>;
 };
 
-// Componente interno para isolar o uso do hook de contexto e socket
-const AppContent: React.FC = () => {
+// Componente interno com as Rotas e lógica de Socket
+const AppRoutes: React.FC = () => {
     // LÓGICA DO WEBSOCKET PARA CONTAGEM ONLINE
     useEffect(() => {
-        // Só conecta se tiver token (usuário logado)
         const token = localStorage.getItem('@Votzz:token');
         if (!token) return;
 
-        const socket = new SockJS('http://localhost:8080/ws-votzz');
+        const socketUrl = import.meta.env.VITE_API_URL 
+            ? `${import.meta.env.VITE_API_URL.replace('/api', '')}/ws-votzz`
+            : 'http://localhost:8080/ws-votzz';
+
+        const socket = new SockJS(socketUrl);
         const stompClient = new Client({
             webSocketFactory: () => socket,
             connectHeaders: { Authorization: `Bearer ${token}` },
@@ -72,7 +77,6 @@ const AppContent: React.FC = () => {
             onDisconnect: () => {
                 console.log("WebSocket Desconectado");
             },
-            // Desativar logs de debug no console se preferir
             debug: () => {} 
         });
 
@@ -81,12 +85,11 @@ const AppContent: React.FC = () => {
         return () => {
             stompClient.deactivate();
         };
-    }, []); // Executa uma vez na montagem
+    }, []);
 
     return (
-        <Router>
         <Routes>
-          {/* --- ROTAS PÚBLICAS (Ainda esperam user={null}) --- */}
+          {/* --- ROTAS PÚBLICAS --- */}
           <Route path="/" element={<LandingPage user={null} />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/governance-sales" element={<GovernanceSales user={null} />} />
@@ -96,10 +99,12 @@ const AppContent: React.FC = () => {
           
           {/* --- AUTENTICAÇÃO --- */}
           <Route path="/login" element={<Auth />} />
+          <Route path="/select-context" element={<SelectContext />} />
           <Route path="/affiliate/login" element={<Auth />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           
           {/* --- REGISTROS --- */}
+          <Route path="/auth/condo-register" element={<CondoRegister />} />
           <Route path="/register-condo" element={<CondoRegister />} />
           <Route path="/affiliate/register" element={<AffiliateRegister />} />
 
@@ -128,7 +133,6 @@ const AppContent: React.FC = () => {
             </PrivateRoute>
           } />
 
-          {/* Governance e Spaces NÃO recebem props, pois usam useAuth interno */}
           <Route path="/governance" element={
             <PrivateRoute allowedRoles={['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER']}>
               <Layout><Governance /></Layout> 
@@ -160,7 +164,7 @@ const AppContent: React.FC = () => {
           } />
 
           <Route path="/subscription/renew" element={
-            <PrivateRoute allowedRoles={['SINDICO', 'MANAGER']}>
+            <PrivateRoute allowedRoles={['SINDICO', 'MANAGER', 'ADM_CONDO']}>
                <Layout><SubscriptionRenovation /></Layout>
             </PrivateRoute>
           } />
@@ -180,15 +184,17 @@ const AppContent: React.FC = () => {
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </Router>
     );
 }
 
 function App() {
+  // AQUI ESTÁ A CORREÇÃO PRINCIPAL: O Router envolve o AuthProvider
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <Router>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </Router>
   );
 }
 

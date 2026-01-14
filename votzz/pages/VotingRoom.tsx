@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  ArrowLeft, MessageSquare, FileCheck, Shield, Video, Sparkles, Send, Lock, Clock, FileText, CheckCircle, Gavel, Scale, Download, Eye, EyeOff
+  ArrowLeft, MessageSquare, FileCheck, Shield, Video, Sparkles, Send, Lock, Clock, FileText, CheckCircle, Gavel, Scale, Download, Eye, EyeOff, Layers
 } from 'lucide-react';
 import api from '../services/api'; 
 import { useAuth } from '../context/AuthContext';
@@ -22,6 +22,11 @@ const VotingRoom: React.FC = () => {
   const [voteReceipt, setVoteReceipt] = useState<string | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   
+  // --- NOVA LÓGICA: MULTI-UNIDADES ---
+  // Se o usuário tiver múltiplas unidades, o peso do voto aumenta
+  const [myUnits, setMyUnits] = useState<string[]>([user?.unidade || 'N/A']);
+  const [totalWeight, setTotalWeight] = useState(1); 
+
   // Estados de UI
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [chatMsg, setChatMsg] = useState('');
@@ -40,14 +45,16 @@ const VotingRoom: React.FC = () => {
   const isClosed = assembly?.status === 'CLOSED' || assembly?.status === 'ENCERRADA';
 
   // Regra de Voto
-  const canVote = (user?.role === 'MORADOR' && !!user.unidade) || 
-                  (user?.role === 'SINDICO' && !!user.unidade) || 
-                  user?.role === 'ADM_CONDO';
+  const canVote = (user?.role === 'MORADOR') || (user?.role === 'SINDICO') || user?.role === 'ADM_CONDO';
 
   // Estatísticas
   const totalVotes = assembly?.votes?.length || 0;
+  // Fração Base (do usuário logado)
   const userFraction = (user as any)?.fraction || 0.0152; 
+  // Fração Total da Assembleia (considerando todos os votos)
   const totalFraction = totalVotes * userFraction; 
+  // Fração Total do Usuário (considerando suas múltiplas unidades)
+  const myTotalFraction = userFraction * totalWeight;
 
   // --- LÓGICA DE CÁLCULO DA ATA (CORRIGIDA) ---
   const ataPreview = useMemo(() => {
@@ -196,6 +203,8 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
 
   const loadData = async () => {
     if (!id) return;
+    
+    // 1. Carrega Assembleia
     try {
         const resAssembly = await api.get(`/assemblies/${id}`);
         setAssembly(resAssembly.data);
@@ -211,6 +220,15 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
         console.error("Erro ao carregar assembleia:", e);
     }
 
+    // 2. Tenta carregar outras unidades do usuário no mesmo condomínio (Simulação Multi-Unit)
+    // Se o backend tiver um endpoint para isso, use aqui. Por enquanto, simulamos com base no login.
+    if (user && user.role === 'MORADOR') {
+        // Exemplo: Se o backend retornar que esse CPF tem 3 unidades, setamos aqui
+        // const resUnits = await api.get('/users/me/units'); 
+        // setMyUnits(resUnits.data);
+        // setTotalWeight(resUnits.data.length);
+    }
+
     try {
         const resChat = await api.get(`/chat/assemblies/${id}`);
         setMessages(resChat.data || []);
@@ -224,14 +242,22 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
   // --- 3. AÇÕES ---
   const handleVote = async () => {
     if (!id || !selectedOption || !user) return;
+    
+    // Se tiver mais de uma unidade, confirma com o usuário
+    if (totalWeight > 1) {
+        const confirm = window.confirm(`Você possui ${totalWeight} unidades neste condomínio. Seu voto será computado para todas elas. Deseja confirmar?`);
+        if (!confirm) return;
+    }
+
     try {
       const response = await api.post(`/assemblies/${id}/vote`, { 
         optionId: selectedOption, 
-        userId: user.id 
+        userId: user.id,
+        applyToAllUnits: true // Flag nova para o backend saber que deve replicar
       });
       setHasVoted(true);
-      setVoteReceipt(response.data.id || 'CONFIRMADO');
-      alert("Voto registrado com sucesso!");
+      setVoteReceipt(response.data.id || 'CONFIRMADO-MULTI');
+      alert(`Voto registrado com sucesso${totalWeight > 1 ? ` para ${totalWeight} unidades` : ''}!`);
       loadData(); 
     } catch (e: any) { 
         alert("Erro ao votar: " + (e.response?.data?.message || "Tente novamente.")); 
@@ -565,12 +591,24 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                         Cédula de Votação
                     </h3>
 
+                    {/* BOX DE PODER DE VOTO MULTI-UNIDADE */}
                     <div className="bg-slate-50 p-3 rounded-lg mb-4 border border-slate-200">
-                        <p className="text-xs text-slate-500 uppercase font-bold mb-1">Seu Poder de Voto</p>
-                        <div className="flex justify-between items-center">
-                            <span className="text-sm font-medium text-slate-700">Unidade: {user?.unidade || 'N/A'}</span>
+                        <p className="text-xs text-slate-500 uppercase font-bold mb-1 flex justify-between">
+                            <span>Seu Poder de Voto</span>
+                            {totalWeight > 1 && <span className="text-emerald-600 flex items-center gap-1"><Layers size={10}/> {totalWeight} Unidades</span>}
+                        </p>
+                        
+                        {/* Lista as unidades */}
+                        <div className="flex flex-wrap gap-1 mb-2">
+                            {myUnits.map((u, i) => (
+                                <span key={i} className="text-[10px] bg-white border px-1.5 py-0.5 rounded text-slate-600 font-mono">{u}</span>
+                            ))}
+                        </div>
+
+                        <div className="flex justify-between items-center border-t border-slate-200 pt-2">
+                            <span className="text-sm font-medium text-slate-700">Fração Total:</span>
                             <span className="bg-emerald-100 text-emerald-800 text-xs px-2 py-1 rounded font-bold flex items-center">
-                                <Scale className="w-3 h-3 mr-1" /> {(userFraction * 100).toFixed(4)}%
+                                <Scale className="w-3 h-3 mr-1" /> {(myTotalFraction * 100).toFixed(4)}%
                             </span>
                         </div>
                     </div>
@@ -621,7 +659,7 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                                 disabled={!selectedOption}
                                 className="w-full mt-6 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold py-3 rounded-lg shadow-md transition-colors"
                             >
-                                Confirmar Voto Seguro
+                                {totalWeight > 1 ? `Confirmar Voto (${totalWeight}x)` : 'Confirmar Voto Seguro'}
                             </button>
                         </div>
                     ) : (

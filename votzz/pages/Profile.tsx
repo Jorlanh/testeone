@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { User, Mail, Phone, Lock, Save, Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+// IMPORTANTE: Importe o componente que criamos
+import { TwoFactorSetup } from '../components/TwoFactorSetup';
 
 const Profile: React.FC = () => {
   const { user } = useAuth(); // Pega dados do contexto
@@ -58,8 +60,6 @@ const Profile: React.FC = () => {
           payload.password = formData.password;
       }
 
-      // [IMPORTANTE] A rota deve ser exata. Verifique se no seu AuthController/UserController tem PATCH /users/{id}
-      // Se não tiver, pode ser PUT ou outra rota. Assumindo o padrão REST:
       await api.patch(`/users/${user.id}`, payload); 
       
       setSuccessMsg("Dados atualizados com sucesso! As alterações aparecerão no próximo login.");
@@ -67,7 +67,6 @@ const Profile: React.FC = () => {
       
     } catch (error: any) {
       console.error("Erro no update:", error);
-      // Tenta pegar a mensagem específica do backend, se houver
       const backendMessage = error.response?.data?.message || error.response?.data;
       setErrorMsg(typeof backendMessage === 'string' ? backendMessage : "Erro ao atualizar dados. Tente novamente.");
     } finally {
@@ -76,7 +75,7 @@ const Profile: React.FC = () => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in duration-500">
+    <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in duration-500 pb-20">
       <div>
         <h1 className="text-2xl font-bold text-slate-800">Meu Perfil</h1>
         <p className="text-slate-500">Gerencie suas informações pessoais e de acesso.</p>
@@ -94,6 +93,7 @@ const Profile: React.FC = () => {
         </div>
       )}
 
+      {/* FORMULÁRIO DE DADOS PESSOAIS */}
       <form onSubmit={handleSubmit} className="bg-white p-8 rounded-xl shadow-sm border border-slate-100 space-y-6">
         
         <div className="grid md:grid-cols-2 gap-6">
@@ -186,6 +186,10 @@ const Profile: React.FC = () => {
         </div>
 
       </form>
+
+      {/* --- SEÇÃO NOVA DE 2FA --- */}
+      <TwoFactorSetup user={user} />
+      
     </div>
   );
 };

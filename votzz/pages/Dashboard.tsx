@@ -238,7 +238,6 @@ const Dashboard: React.FC = () => {
         console.error("Erro upload:", error.response?.data);
         const msg = error.response?.data?.message || "";
         
-        // Tratamento de erro específico da AWS para orientar você
         if (msg.includes("AWS Access Key Id") || error.response?.status === 500) {
              alert("Erro de configuração no servidor (AWS S3 inválido). O arquivo não pôde ser salvo na nuvem.");
         } else {
@@ -406,7 +405,6 @@ const Dashboard: React.FC = () => {
             <h2 className="text-lg font-bold text-slate-800">Evolução de Participação</h2>
           </div>
           
-          {/* --- CORREÇÃO DO ERRO DO GRÁFICO (RECHARTS WIDTH) --- */}
           <div style={{ width: '100%', height: 300 }}>
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData.length > 0 ? chartData : [{name: 'Jan', votos: 0}]} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>

@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
-import { api } from '../../services/api';
+import api from '../../services/api';
 import { Logo } from '../../components/Logo';
 import { 
-  Building, User, ArrowRight, ArrowLeft, MapPin, AlertCircle, CreditCard, Eye, EyeOff, Copy, Check, Ticket, CheckCircle, Loader2
+  Building, User, ArrowRight, ArrowLeft, MapPin, AlertCircle, CreditCard, Eye, EyeOff, Copy, Check, Ticket, CheckCircle, Loader2, Gift // <--- Gift IMPORTADO AQUI
 } from 'lucide-react';
 
 const CUSTOM_TRIMESTRAL_ID = '33333333-3333-3333-3333-333333333333';
@@ -16,6 +16,9 @@ export default function CondoRegister() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
+  // Flag que vem do Pricing
+  const isTrial = location.state?.isTrial === true;
+
   // UI States
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -53,17 +56,13 @@ export default function CondoRegister() {
     if (formData.planId === CUSTOM_TRIMESTRAL_ID) {
       return monthly * 3;
     } else {
-      return (monthly * 12) * 0.80; // 20% desconto padrão do anual
+      return (monthly * 12) * 0.80; 
     }
   };
 
   const basePrice = calculateBasePrice();
-  // Preço Final com Desconto do Cupom
-  const finalPrice = discountPercent > 0 
-      ? basePrice - (basePrice * (discountPercent / 100)) 
-      : basePrice;
+  const finalPrice = discountPercent > 0 ? basePrice - (basePrice * (discountPercent / 100)) : basePrice;
 
-  // Função para validar cupom no backend
   const handleApplyCoupon = async () => {
       if (!formData.couponCode) return;
       setCouponLoading(true);
@@ -72,7 +71,7 @@ export default function CondoRegister() {
 
       try {
           const res = await api.get(`/auth/validate-coupon?code=${formData.couponCode}`);
-          const percent = res.data; // Retorna ex: 10
+          const percent = res.data; 
           setDiscountPercent(percent);
           setCouponMessage({ type: 'success', text: `Cupom aplicado! ${percent}% OFF` });
       } catch (err: any) {
@@ -126,17 +125,23 @@ export default function CondoRegister() {
       const res = await api.post('/auth/register-condo', {
           ...formData,
           qtyUnits: Number(formData.qtyUnits),
-          qtyBlocks: Number(formData.qtyBlocks)
+          qtyBlocks: Number(formData.qtyBlocks),
+          isTrial: isTrial // Envia para o backend que é Trial (se for o caso)
       });
       
+      // Se for Trial, o backend deve retornar sucesso sem redirectUrl/pix
       const { redirectUrl, pixPayload, pixImage } = res.data;
 
-      if (pixPayload) {
+      if (isTrial) {
+          setSuccessFree(true);
+          setStep(3);
+      } else if (pixPayload) {
           setPixData({ payload: pixPayload, image: pixImage });
           setStep(3);
       } else if (redirectUrl) {
           window.location.href = redirectUrl;
       } else {
+          // Fallback se não retornou nada específico mas deu 200 OK
           setSuccessFree(true);
           setStep(3);
       }
@@ -165,8 +170,18 @@ export default function CondoRegister() {
         <div className="bg-slate-900 p-4 border-b border-slate-700 flex justify-center gap-4">
            <div className={`flex items-center gap-2 ${step >= 1 ? 'text-emerald-500' : 'text-slate-500'}`}><div className="w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold">1</div><span>Dados</span></div>
            <div className="w-10 h-px bg-slate-700 self-center"></div>
-           <div className={`flex items-center gap-2 ${step >= 2 ? 'text-emerald-500' : 'text-slate-500'}`}><div className="w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold">2</div><span>Pagamento</span></div>
-           {isCustom && <><div className="w-10 h-px bg-slate-700 self-center"></div><div className={`flex items-center gap-2 ${step >= 3 ? 'text-emerald-500' : 'text-slate-500'}`}><div className="w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold">3</div><span>{successFree ? 'Concluído' : 'Pix'}</span></div></>}
+           <div className={`flex items-center gap-2 ${step >= 2 ? 'text-emerald-500' : 'text-slate-500'}`}><div className="w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold">2</div><span>{isTrial ? 'Confirmação' : 'Pagamento'}</span></div>
+           
+           {/* Mostra passo 3 se não for Trial ou se já tiver finalizado */}
+           {(!isTrial || successFree) && (
+               <>
+                   <div className="w-10 h-px bg-slate-700 self-center"></div>
+                   <div className={`flex items-center gap-2 ${step >= 3 ? 'text-emerald-500' : 'text-slate-500'}`}>
+                       <div className="w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold">3</div>
+                       <span>Concluído</span>
+                   </div>
+               </>
+           )}
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-6">
@@ -174,6 +189,7 @@ export default function CondoRegister() {
 
           {step === 1 && (
             <div className="space-y-6 animate-in slide-in-from-right-4">
+              {/* --- STEP 1: DADOS DO CONDOMÍNIO E ENDEREÇO --- */}
               <div className="bg-slate-700/30 p-5 rounded-xl border border-slate-600">
                 <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><Building className="text-emerald-500"/> Dados do Condomínio</h3>
                 <div className="grid md:grid-cols-2 gap-4">
@@ -211,6 +227,7 @@ export default function CondoRegister() {
 
           {step === 2 && (
             <div className="space-y-6 animate-in slide-in-from-right-4">
+               {/* --- STEP 2: DADOS DO SÍNDICO --- */}
                <div className="bg-slate-700/30 p-5 rounded-xl border border-slate-600">
                 <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><User className="text-emerald-500"/> Dados do Síndico</h3>
                 <div className="space-y-4">
@@ -234,9 +251,9 @@ export default function CondoRegister() {
                 </div>
                </div>
                
-               {isCustom ? (
+               {/* --- ÁREA DE PAGAMENTO (Só exibe se NÃO for Trial e se for Custom) --- */}
+               {!isTrial && isCustom && (
                    <>
-                       {/* Campo de Cupom com Botão Aplicar */}
                        <div className="bg-slate-700/30 p-4 rounded-xl border border-slate-600 mb-4">
                            <label className="text-sm text-slate-400 mb-1 block flex items-center gap-2">
                                <Ticket size={16} /> Possui um Cupom de Desconto?
@@ -265,7 +282,6 @@ export default function CondoRegister() {
                                </button>
                            </div>
                            
-                           {/* Mensagem de Feedback do Cupom */}
                            {couponMessage.text && (
                                <p className={`text-xs mt-2 flex items-center gap-1 ${couponMessage.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
                                    {couponMessage.type === 'success' ? <CheckCircle size={12} /> : <AlertCircle size={12} />}
@@ -317,7 +333,9 @@ export default function CondoRegister() {
                            </p>
                        </div>
                    </>
-               ) : (
+               )}
+               
+               {!isTrial && !isCustom && (
                    <div className="bg-emerald-900/20 p-6 rounded-xl border border-emerald-500/30 text-center">
                        <CreditCard className="mx-auto text-emerald-400 mb-2" size={32} />
                        <h4 className="text-white font-bold text-lg">Checkout Seguro</h4>
@@ -325,23 +343,31 @@ export default function CondoRegister() {
                    </div>
                )}
 
+               {isTrial && (
+                   <div className="bg-emerald-900/20 p-6 rounded-xl border border-emerald-500/30 text-center">
+                       <Gift className="mx-auto text-emerald-400 mb-2" size={32} />
+                       <h4 className="text-white font-bold text-lg">Período de Teste Grátis</h4>
+                       <p className="text-emerald-300 text-sm mt-1">Você terá 30 dias de acesso completo sem custo algum.</p>
+                   </div>
+               )}
+
                <div className="flex gap-4">
                  <button type="button" onClick={() => setStep(1)} className="px-6 py-3 rounded-lg text-slate-400 hover:bg-slate-800 transition-colors"><ArrowLeft className="inline mr-2"/> Voltar</button>
                  <button type="submit" disabled={loading} className="flex-1 btn-primary py-4 text-lg shadow-lg shadow-emerald-900/50">
-                    {loading ? 'Processando...' : (isCustom ? 'Gerar Pix' : 'Ir para Pagamento')}
+                    {loading ? 'Processando...' : (isTrial ? 'Finalizar Cadastro Grátis' : (isCustom ? 'Gerar Pix' : 'Ir para Pagamento'))}
                  </button>
                </div>
             </div>
           )}
           
-          {/* Passo 3 (Pix ou Sucesso) igual ao anterior... */}
+          {/* --- STEP 3: SUCESSO OU PIX --- */}
           {step === 3 && (
             successFree ? (
               <div className="space-y-6 animate-in slide-in-from-right-4 text-center">
                   <div className="bg-emerald-500/10 p-8 rounded-2xl inline-block border border-emerald-500/30">
                       <CheckCircle className="w-24 h-24 mx-auto text-emerald-500 mb-4" />
                       <h2 className="text-2xl font-bold text-white">Cadastro Concluído!</h2>
-                      <p className="text-slate-300 mt-2">Seu cupom de 100% foi aplicado com sucesso.</p>
+                      <p className="text-slate-300 mt-2">{isTrial ? "Seu período de 30 dias grátis começou." : "Pagamento confirmado ou processado."}</p>
                   </div>
                   <Link to="/login" className="btn-primary inline-block w-full py-4 mt-4">Acessar Sistema</Link>
               </div>

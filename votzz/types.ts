@@ -4,9 +4,15 @@
 export type UserRole = 'ADMIN' | 'SINDICO' | 'ADM_CONDO' | 'MORADOR' | 'AFILIADO' | 'MANAGER';
 
 // --- Autenticação ---
+export interface LoginCredentials { // Adicionado conforme solicitado para AuthContext
+  email: string;
+  password: string;
+}
+
 export interface LoginRequest {
   login: string; // Pode ser email ou CPF
   password: string;
+  selectedProfileId?: string; // Para fluxo multi-perfil
 }
 
 export interface User {
@@ -19,14 +25,30 @@ export interface User {
   unit?: string;     // Compatibilidade
   bloco?: string;    
   block?: string;    // Compatibilidade
-  whatsapp: string;
+  whatsapp?: string;
   phone?: string;    // Compatibilidade
   role: UserRole;
+  tenant?: Tenant;   // Referência ao objeto Tenant completo se disponível
   tenantId?: string | null;
   fraction?: number;
   is2faEnabled?: boolean;
   avatarUrl?: string;
   lastSeen?: string;
+}
+
+export interface Tenant {
+  id: string;
+  nome: string;
+  cnpj?: string;
+  unidadesTotal?: number;
+  plano?: any;
+}
+
+export interface ProfileOption {
+  userId: string;
+  userName: string;
+  role: string;
+  contextName: string;
 }
 
 export interface LoginResponse {
@@ -40,6 +62,10 @@ export interface LoginResponse {
   bloco?: string;
   unidade?: string;
   cpf?: string;
+
+  // Multi-Context Fields
+  multipleProfiles?: boolean;
+  profiles?: ProfileOption[];
 }
 
 export interface AuthContextType {
@@ -50,6 +76,7 @@ export interface AuthContextType {
   login: (data: LoginResponse) => void;
   logout: () => void;
   updateUser: (data: Partial<User>) => void;
+  selectContext: (userId: string) => Promise<void>;
 }
 
 // --- Dashboards e Métricas ---
