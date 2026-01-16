@@ -80,7 +80,11 @@ function AuditLogView() {
     const [logs, setLogs] = useState<any[]>([]);
     
     useEffect(() => {
-        api.get('/admin/audit-logs').then(res => setLogs(res.data)).catch(console.error);
+        let isMounted = true;
+        api.get('/admin/audit-logs').then(res => {
+            if (isMounted) setLogs(res.data);
+        }).catch(console.error);
+        return () => { isMounted = false; };
     }, []);
 
     return (
@@ -206,15 +210,15 @@ function AdminsList({ currentUser }: { currentUser: any }) {
     );
 }
 
-// 3. TENANTS MANAGER (CORRIGIDO PARA EVITAR ERRO DE UNCONTROLLED INPUT E ERRO 400)
+// 3. TENANTS MANAGER (CORRIGIDO PARA APENAS TRIMESTRAL E ANUAL)
 function TenantsManager() {
     const [tenants, setTenants] = useState<any[]>([]);
     const [editingTenant, setEditingTenant] = useState<any>(null);
     
-    // FIX 1: Inicialização com strings vazias para evitar erro de uncontrolled component
+    // FIX 1: Inicialização correta com ANUAL como padrão
     const [editForm, setEditForm] = useState({
         nome: '', cnpj: '', cep: '', logradouro: '', numero: '', bairro: '', cidade: '', estado: '', secretKeyword: '',
-        planoNome: 'ESSENCIAL', periodicidade: 'MENSAL', dataExpiracaoPlano: '', ativo: true
+        planoNome: 'ESSENCIAL', periodicidade: 'ANUAL', dataExpiracaoPlano: '', ativo: true
     });
 
     const load = () => api.get('/admin/tenants').then(res => setTenants(res.data)).catch(() => {});
@@ -223,7 +227,7 @@ function TenantsManager() {
     useEffect(() => {
         if (editingTenant) {
             let planoNome = 'ESSENCIAL';
-            let periodicidade = 'MENSAL';
+            let periodicidade = 'ANUAL'; // Fallback padrão
             
             // Lógica para extrair plano e periodicidade
             const rawPlano = typeof editingTenant.plano === 'string' ? editingTenant.plano : (editingTenant.plano?.nome || '');
@@ -235,12 +239,11 @@ function TenantsManager() {
                 else if (upper.includes('CUSTOM')) planoNome = 'CUSTOM';
                 else if (upper.includes('GRATUITO')) planoNome = 'GRATUITO';
 
+                // Apenas Trimestral e Anual suportados
                 if (upper.includes('TRIMESTRAL')) periodicidade = 'TRIMESTRAL';
-                else if (upper.includes('SEMESTRAL')) periodicidade = 'SEMESTRAL';
                 else if (upper.includes('ANUAL')) periodicidade = 'ANUAL';
             }
 
-            // FIX 2: Garante fallback para string vazia em TODOS os campos
             setEditForm({
                 nome: editingTenant.nome || '',
                 cnpj: editingTenant.cnpj || '',
@@ -285,7 +288,6 @@ function TenantsManager() {
                 dataExpiracaoPlano: editForm.dataExpiracaoPlano ? new Date(editForm.dataExpiracaoPlano).toISOString() : null
             };
 
-            // Remove campos auxiliares para não dar erro no backend se ele for estrito
             delete (payload as any).planoNome;
             delete (payload as any).periodicidade;
 
@@ -324,7 +326,6 @@ function TenantsManager() {
         setEditForm({...editForm, dataExpiracaoPlano: current.toISOString().split('T')[0]});
     };
 
-    // Helper para exibir o nome formatado
     const formatPlanName = (plano: any) => {
         if (!plano) return 'Manual';
         const planoStr = typeof plano === 'string' ? plano : plano.nome;
@@ -376,10 +377,8 @@ function TenantsManager() {
                                                     value={editForm.periodicidade}
                                                     onChange={e => setEditForm({...editForm, periodicidade: e.target.value})}
                                                 >
-                                                    <option value="MENSAL">Mensal</option>
-                                                    <option value="TRIMESTRAL">Trimestral</option>
-                                                    <option value="SEMESTRAL">Semestral</option>
                                                     <option value="ANUAL">Anual</option>
+                                                    <option value="TRIMESTRAL">Trimestral</option>
                                                 </select>
                                             )}
                                         </div>
@@ -394,8 +393,7 @@ function TenantsManager() {
                                             value={editForm.dataExpiracaoPlano}
                                             onChange={e => setEditForm({...editForm, dataExpiracaoPlano: e.target.value})}
                                         />
-                                        <button type="button" onClick={() => addMonths(1)} className="px-3 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100">+1 Mês</button>
-                                        <button type="button" onClick={() => addMonths(2)} className="px-3 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100">+2 Meses</button>
+                                        <button type="button" onClick={() => addMonths(3)} className="px-3 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100">+3 Meses</button>
                                         <button type="button" onClick={() => addMonths(12)} className="px-3 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100">+1 Ano</button>
                                     </div>
                                 </div>
@@ -440,7 +438,6 @@ function TenantsManager() {
                             <p className="text-xs text-slate-400 font-mono font-bold">CNPJ: {t.cnpj} | Key: {t.secretKeyword}</p>
                             <p className="text-xs text-slate-500 font-bold flex items-center gap-1">
                                 <CalendarClock size={12}/> 
-                                {/* FIX: Exibição correta do nome do plano */}
                                 Plano: {formatPlanName(t.plano)} ({getDaysRemaining(t.dataExpiracaoPlano)})
                             </p>
                             {t.cidade && <p className="text-xs text-slate-500 font-bold flex items-center gap-1"><MapPin size={12}/> {t.cidade}/{t.estado}</p>}
@@ -522,7 +519,7 @@ function CouponsManager() {
   );
 }
 
-// 5. ORGANIZED USERS VIEW (Mantido igual)
+// 5. ORGANIZED USERS VIEW (COM SELETOR DE CONDOMÍNIO)
 function OrganizedUsersView() {
   const [data, setData] = useState<any>(null);
   const [tenantsList, setTenantsList] = useState<any[]>([]);
@@ -559,12 +556,15 @@ function OrganizedUsersView() {
             email: editingUser.email,
             cpf: editingUser.cpf,
             whatsapp: editingUser.whatsapp,
-            role: editingUser.role // Permitir alteração de role
+            role: editingUser.role,
+            tenantId: editingUser.tenantId // <--- Envia o ID do condomínio selecionado
         };
         if(editingUser.newPassword) payload.newPassword = editingUser.newPassword;
 
         await api.put(`/admin/users/${editingUser.id}`, payload);
-        alert("Usuário atualizado!"); setEditingUser(null); loadData();
+        alert("Usuário atualizado com sucesso!"); 
+        setEditingUser(null); 
+        loadData();
     } catch (e) { alert("Erro ao atualizar usuário."); }
   };
 
@@ -625,6 +625,21 @@ function OrganizedUsersView() {
             <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-lg w-full">
                 <h3 className="text-xl font-black mb-4">Editar Usuário</h3>
                 <form onSubmit={handleUpdate} className="space-y-4">
+                    {/* NOVO: SELETOR DE CONDOMÍNIO NO MODO DE EDIÇÃO */}
+                    <div>
+                        <label className="text-xs font-bold text-slate-400 uppercase ml-1">Vincular a Condomínio</label>
+                        <select 
+                            className="w-full p-3 border rounded-xl font-bold text-slate-600"
+                            value={editingUser.tenantId || ''}
+                            onChange={e => setEditingUser({...editingUser, tenantId: e.target.value})}
+                        >
+                            <option value="">Sem Alteração / Manter Atual</option>
+                            {tenantsList.map(t => (
+                                <option key={t.id} value={t.id}>{t.nome}</option>
+                            ))}
+                        </select>
+                    </div>
+
                     <input className="w-full p-3 border rounded-xl" value={editingUser.nome} onChange={e => setEditingUser({...editingUser, nome: e.target.value})} placeholder="Nome" />
                     <input className="w-full p-3 border rounded-xl" value={editingUser.email} onChange={e => setEditingUser({...editingUser, email: e.target.value})} placeholder="Email" />
                     <div className="grid grid-cols-2 gap-4">
@@ -692,11 +707,12 @@ const UserTable = ({ users, search, onEdit, onDelete }: any) => {
 
 // 6. MANUAL CONDO CREATOR (CORRIGIDO PARA REGRAS DE UNIDADES E PLANO)
 function ManualCondoCreator() {
+  // Inicializa com ANUAL
   const [form, setForm] = useState<any>({ 
     condoName: '', cnpj: '', qtyUnits: 30, secretKeyword: '', 
     nameSyndic: '', emailSyndic: '', cpfSyndic: '', phoneSyndic: '', passwordSyndic: '', confirm: '', 
     cep: '', logradouro: '', numero: '', bairro: '', cidade: '', estado: '', pontoReferencia: '',
-    planoNome: 'ESSENCIAL', periodicidade: 'MENSAL'
+    planoNome: 'ESSENCIAL', periodicidade: 'ANUAL'
   });
   const [showPassword, setShowPassword] = useState(false);
 
@@ -733,30 +749,23 @@ function ManualCondoCreator() {
     e.preventDefault();
     if(form.passwordSyndic !== form.confirm) return alert("Senhas não conferem");
     try {
-        // CORREÇÃO: Remove campos auxiliares e formata o plano se necessário
         const payload = { ...form };
-        
-        // Se o seu backend agora aceita "plano" como string, monte aqui:
-        // Ex: "ESSENCIAL_MENSAL"
         const planoFinal = `${form.planoNome}_${form.periodicidade}`;
         
-        // Remove os campos que não existem no DTO do backend
         delete payload.planoNome;
         delete payload.periodicidade;
         delete payload.confirm;
         
-        // Adiciona o campo que o backend espera (se você adicionou 'plano' no DTO)
         payload.plano = planoFinal; 
 
         await api.post('/admin/create-tenant-manual', payload);
         alert('Condomínio criado com sucesso!');
         
-        // Reset form
         setForm({ 
             condoName: '', cnpj: '', qtyUnits: 30, secretKeyword: '', 
             nameSyndic: '', emailSyndic: '', cpfSyndic: '', phoneSyndic: '', passwordSyndic: '', confirm: '', 
             cep: '', logradouro: '', numero: '', bairro: '', cidade: '', estado: '', pontoReferencia: '',
-            planoNome: 'ESSENCIAL', periodicidade: 'MENSAL'
+            planoNome: 'ESSENCIAL', periodicidade: 'ANUAL'
         });
     } catch(err: any) { alert(err.response?.data?.error || 'Erro ao criar condomínio.'); }
   };
@@ -795,10 +804,9 @@ function ManualCondoCreator() {
                         value={form.periodicidade}
                         onChange={e => setForm({...form, periodicidade: e.target.value})}
                     >
-                        <option value="MENSAL">Mensal</option>
-                        <option value="TRIMESTRAL">Trimestral</option>
-                        <option value="SEMESTRAL">Semestral</option>
+                        {/* Apenas ANUAL e TRIMESTRAL */}
                         <option value="ANUAL">Anual</option>
+                        <option value="TRIMESTRAL">Trimestral</option>
                     </select>
                 </div>
             </div>

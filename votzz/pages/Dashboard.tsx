@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, CartesianGrid 
 } from 'recharts';
 import { 
-  Users, FileText, CheckCircle, AlertTriangle, Plus, Megaphone, TrendingUp, Calendar, Wallet, Shield, Edit, Settings, Upload, Download, FileCheck, Banknote, ShieldAlert, ArrowRight
+  Users, FileText, CheckCircle, AlertTriangle, Plus, Megaphone, TrendingUp, Calendar, Wallet, Shield, Edit, Settings, Upload, Download, FileCheck, Banknote, ShieldAlert, ArrowRight, MapPin, Building
 } from 'lucide-react';
 import api from '../services/api'; 
 import { Assembly, User } from '../types';
@@ -48,6 +48,24 @@ const Dashboard: React.FC = () => {
   const [reports, setReports] = useState<FinancialReport[]>([]);
   const [expirationDate, setExpirationDate] = useState<string | null>(null);
   
+  // CORREÇÃO: Nome do condomínio vindo do Contexto/LocalStorage
+  const [condoName, setCondoName] = useState<string>(() => {
+      // 1. Tenta pegar do usuário carregado no contexto
+      if ((user as any)?.tenantName) return (user as any).tenantName;
+      if ((user as any)?.tenant?.nome) return (user as any).tenant.nome;
+
+      // 2. Tenta pegar do localStorage (backup)
+      const stored = localStorage.getItem('@Votzz:user');
+      if (stored) {
+          try {
+              const u = JSON.parse(stored);
+              if (u.tenantName) return u.tenantName;
+              if (u.tenant?.nome) return u.tenant.nome;
+          } catch(e) {}
+      }
+      return 'Painel do Condomínio';
+  }); 
+  
   const [realStats, setRealStats] = useState({
     totalUsers: 0,
     activeAssemblies: 0,
@@ -71,21 +89,34 @@ const Dashboard: React.FC = () => {
   const displayName = user?.nome || user?.email?.split('@')[0] || 'Morador';
 
   useEffect(() => {
+    // Atualiza o nome se o usuário mudar (ex: troca de contexto)
+    if ((user as any)?.tenantName) {
+        setCondoName((user as any).tenantName);
+    }
     loadData();
-  }, []);
+  }, [user]);
 
   const loadData = async () => {
     try {
-        const results = await Promise.allSettled([
+        const promises = [
           api.get('/assemblies'),             
           api.get('/financial/balance'),      
           api.get('/users'),                 
-          api.get('/tenants/my-subscription').catch(() => ({ data: null })), 
           api.get('/tenants/audit-logs'),     
           api.get('/financial/reports'),      
           api.get('/tenants/bank-info'),
           api.get('/condo/dashboard/stats').catch(() => ({ data: null }))
-        ]);
+        ];
+
+        // Só busca assinatura se for gerente, para evitar erro 400/403
+        if (isManager) {
+             promises.push(api.get('/tenants/my-subscription').catch(() => ({ data: null })));
+        }
+
+        const results = await Promise.allSettled(promises);
+
+        // Mapeamento dos resultados baseado nos índices (Cuidado ao alterar a ordem)
+        // 0: assemblies, 1: financial, 2: users, 3: logs, 4: reports, 5: bank, 6: stats, 7: subscription (opcional)
 
         if (results[0].status === 'fulfilled') {
             const data = Array.isArray(results[0].value.data) ? results[0].value.data : [];
@@ -94,17 +125,19 @@ const Dashboard: React.FC = () => {
         if (results[1].status === 'fulfilled') setFinancial(results[1].value.data || { balance: 0, lastUpdate: 'N/A' });
         if (results[2].status === 'fulfilled') setCondoUsers(Array.isArray(results[2].value.data) ? results[2].value.data : []);
         
-        if (results[3].status === 'fulfilled' && results[3].value.data) {
-            setExpirationDate(results[3].value.data.expirationDate);
+        if (results[3].status === 'fulfilled') setAuditLogs(results[3].value.data || []);
+        if (results[4].status === 'fulfilled') setReports(results[4].value.data || []);
+        if (results[5].status === 'fulfilled') setBankForm(results[5].value.data || bankForm);
+        
+        if (results[6].status === 'fulfilled' && results[6].value.data) {
+          setRealStats(results[6].value.data);
         }
 
-        if (results[4].status === 'fulfilled') setAuditLogs(results[4].value.data || []);
-        if (results[5].status === 'fulfilled') setReports(results[5].value.data || []);
-        if (results[6].status === 'fulfilled') setBankForm(results[6].value.data || bankForm);
-        
-        if (results[7].status === 'fulfilled' && results[7].value.data) {
-          setRealStats(results[7].value.data);
+        // Se tiver assinatura (índice 7)
+        if (results[7] && results[7].status === 'fulfilled' && results[7].value?.data) {
+            setExpirationDate(results[7].value.data.expirationDate);
         }
+
     } catch (error) {
         console.error("Erro ao carregar dados do dashboard:", error);
     }
@@ -260,7 +293,13 @@ const Dashboard: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Olá, {displayName.split(' ')[0]}</h1>
-          <p className="text-slate-500 flex items-center gap-2">
+          {/* NOME DO CONDOMÍNIO ATUAL */}
+          <div className="flex items-center gap-2 text-emerald-600 font-bold mt-1">
+            <Building size={18} />
+            {/* Exibe o nome armazenado no estado (vindo do localStorage/Contexto) */}
+            <span>{condoName}</span>
+          </div>
+          <p className="text-slate-500 flex items-center gap-2 mt-1 text-sm">
             <Calendar className="w-4 h-4" />
             {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
@@ -405,8 +444,9 @@ const Dashboard: React.FC = () => {
             <h2 className="text-lg font-bold text-slate-800">Evolução de Participação</h2>
           </div>
           
-          <div style={{ width: '100%', height: 300 }}>
-            <ResponsiveContainer width="100%" height="100%">
+          {/* CORREÇÃO DO GRÁFICO: DIV COM ALTURA EXPLÍCITA */}
+          <div className="h-[300px] w-full min-w-0">
+             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData.length > 0 ? chartData : [{name: 'Jan', votos: 0}]} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorVotos" x1="0" y1="0" x2="0" y2="1">
