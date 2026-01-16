@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -39,11 +39,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   // Função para Voltar ao God Mode (Painel de Admin)
   const handleBackToGodMode = () => {
       if (superAdminToken) {
-          // Restaura o token original
           localStorage.setItem('@Votzz:token', superAdminToken);
-          // Remove o backup
           localStorage.removeItem('@Votzz:superAdminToken');
-          // Força recarregamento para o App pegar o contexto de Admin novamente
           window.location.href = '/admin/dashboard';
       }
   };
@@ -66,11 +63,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (user.role === 'SINDICO') return 'Síndico Profissional';
     if (user.role === 'ADM_CONDO' || user.role === 'MANAGER') return 'Administrador';
     
-    // 3. Morador
+    // 3. Morador (CORREÇÃO DO BUG "B A")
     const bloco = user.bloco || '';
     const unidade = user.unidade || '';
 
-    if (bloco && unidade) return `B ${bloco} - Und ${unidade}`;
+    // Se bloco for "A" e unidade "202", mostrará "A - Und 202"
+    if (bloco && unidade) return `${bloco} - Und ${unidade}`;
     if (unidade && !bloco) return `Und ${unidade}`;
     if (user.role === 'MORADOR') return 'Morador';
     
@@ -79,7 +77,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const userSubtitle = getUserSubtitle();
   
-  // Cor do subtítulo (Vermelho para Super Admin, Verde para Admin, Padrão para outros)
   const subtitleColorClass = user?.id === SUPER_ADMIN_ID 
       ? "text-[10px] font-black text-red-500 uppercase tracking-widest" 
       : user?.role === 'ADMIN' 
@@ -123,7 +120,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       icon: ShieldAlert,
       allowed: ['SINDICO', 'ADM_CONDO', 'MANAGER']
     }
-    // "Meu Perfil" REMOVIDO DAQUI para ficar apenas no footer
   ];
 
   return (
@@ -175,7 +171,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </div>
           
           <div className="grid grid-cols-2 gap-2">
-            {/* Botão Perfil: Mostra para todos exceto Afiliados (que tem painel próprio) */}
             {user?.role !== 'AFILIADO' && (
                 <Link 
                 to={user?.role === 'ADMIN' ? '/admin/dashboard' : '/profile'} 
