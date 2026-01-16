@@ -1,16 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
-import { Lock, Mail, ShieldCheck, ArrowRight, AlertCircle, User as UserIcon, TrendingUp, Building, Phone, CheckCircle, Fingerprint, Plus, Trash2, Key } from 'lucide-react';
+import { Lock, Mail, ShieldCheck, ArrowRight, AlertCircle, User as UserIcon, TrendingUp, Building, Phone, CheckCircle, Fingerprint, Plus, Trash2, Key, FileText } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { LoginRequest, ProfileOption } from '../types';
+import { ProfileOption } from '../types';
 
 // Função para gerar o ID do dispositivo (ou recuperar)
 const getDeviceId = () => {
     let id = localStorage.getItem('votzz_device_id');
     if (!id) {
-        // Gera um ID simples (timestamp + random)
         id = Date.now().toString(36) + Math.random().toString(36).substring(2);
         localStorage.setItem('votzz_device_id', id);
     }
@@ -28,14 +27,15 @@ const Auth: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Login
+  // Login States
   const [loginInput, setLoginInput] = useState(''); 
   const [password, setPassword] = useState('');
-  
+  const [keepLogged, setKeepLogged] = useState(false); // NOVO: Manter conectado
+
   // 2FA STATE
   const [show2FAInput, setShow2FAInput] = useState(false);
   const [code2FA, setCode2FA] = useState('');
-  const [trustDevice, setTrustDevice] = useState(false); // Checkbox state
+  const [trustDevice, setTrustDevice] = useState(false); 
 
   // Multi-Perfil
   const [showProfileSelector, setShowProfileSelector] = useState(false);
@@ -49,6 +49,7 @@ const Auth: React.FC = () => {
   const [whatsapp, setWhatsapp] = useState('');
   const [condoIdentifier, setCondoIdentifier] = useState('');
   const [secretKeyword, setSecretKeyword] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false); // NOVO: Termos de uso
 
   // Multi-Unidades
   const [hasMultipleUnits, setHasMultipleUnits] = useState(false);
@@ -109,10 +110,10 @@ const Auth: React.FC = () => {
             login: loginInput, 
             password,
             selectedProfileId: profileId,
-            deviceId: getDeviceId() // Envia o ID do navegador
+            deviceId: getDeviceId(),
+            keepLogged: keepLogged // NOVO: Envia flag para o backend
         };
 
-        // Se 2FA está visível, envia o código junto e a opção de confiar
         if (show2FAInput && code2FA) {
             payload.code2fa = parseInt(code2FA);
             payload.trustDevice = trustDevice;
@@ -121,14 +122,12 @@ const Auth: React.FC = () => {
         const response = await api.post('/auth/login', payload);
         const data = response.data;
 
-        // CENÁRIO 1: Backend pede código 2FA
         if (data.requiresTwoFactor) {
             setShow2FAInput(true);
             setLoading(false);
             return;
         }
 
-        // CENÁRIO 2: Múltiplos Perfis
         if (data.multipleProfiles && !profileId) {
             setAvailableProfiles(data.profiles || []);
             setShowProfileSelector(true);
@@ -157,6 +156,12 @@ const Auth: React.FC = () => {
     if (isLogin) {
         await executeLogin();
     } else {
+        // Validação extra para garantir que os termos foram aceitos
+        if (!acceptedTerms) {
+            setError('Você precisa aceitar os termos de uso.');
+            return;
+        }
+
         setLoading(true);
         try {
             if (password !== confirmPassword) {
@@ -405,6 +410,20 @@ const Auth: React.FC = () => {
                                 <Lock className="absolute left-3 top-3 h-5 w-5 text-slate-500" />
                                 <input type="password" placeholder="Sua Senha" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-slate-900 text-white pl-10 p-3 border border-slate-700 rounded-lg focus:border-emerald-500 outline-none transition-all" required />
                             </div>
+                            
+                            {/* NOVO: CHECKBOX MANTER CONECTADO */}
+                            <div className="flex items-center gap-2">
+                                <input 
+                                    type="checkbox" 
+                                    id="keepLogged" 
+                                    checked={keepLogged} 
+                                    onChange={e => setKeepLogged(e.target.checked)} 
+                                    className="w-4 h-4 rounded border-slate-500 bg-slate-800 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                                />
+                                <label htmlFor="keepLogged" className="text-sm text-slate-300 cursor-pointer select-none">
+                                    Mantenha-me conectado
+                                </label>
+                            </div>
                         </>
                     ) : (
                         <div className="animate-in slide-in-from-right duration-300">
@@ -426,7 +445,6 @@ const Auth: React.FC = () => {
                                 />
                             </div>
 
-                            {/* --- CHECKBOX DE DISPOSITIVO CONFIÁVEL --- */}
                             <div className="flex items-center justify-center gap-2 mb-4">
                                 <input 
                                     type="checkbox" 
@@ -439,8 +457,6 @@ const Auth: React.FC = () => {
                                     Não pedir código por 30 dias neste navegador
                                 </label>
                             </div>
-                            {/* ----------------------------------------- */}
-
                             <button type="button" onClick={() => setShow2FAInput(false)} className="text-xs text-slate-500 hover:text-white mt-2 underline w-full text-center">Cancelar e voltar</button>
                         </div>
                     )}
@@ -457,6 +473,19 @@ const Auth: React.FC = () => {
 
             {!isLogin && (
               <>
+                {/* NOVO: CAMPO DE SENHA ADICIONADO AQUI */}
+                <div className="relative animate-in slide-in-from-top-1">
+                    <Lock className="absolute left-3 top-3 h-5 w-5 text-slate-500" />
+                    <input 
+                    type="password" 
+                    placeholder="Sua Senha" 
+                    value={password} 
+                    onChange={e => setPassword(e.target.value)} 
+                    className="w-full bg-slate-900 text-white pl-10 p-3 border border-slate-700 rounded-lg focus:border-emerald-500 outline-none transition-all"
+                    required 
+                    />
+                </div>
+
                 <div className="relative animate-in slide-in-from-top-1">
                     <CheckCircle className="absolute left-3 top-3 h-5 w-5 text-slate-500" />
                     <input 
@@ -481,10 +510,31 @@ const Auth: React.FC = () => {
               </>
             )}
 
+            {/* NOVO: TERMOS DE USO */}
+            {!isLogin && (
+                <div className="flex items-start gap-2 mt-4">
+                    <input 
+                        type="checkbox" 
+                        id="terms" 
+                        checked={acceptedTerms}
+                        onChange={e => setAcceptedTerms(e.target.checked)}
+                        className="w-4 h-4 mt-1 rounded border-slate-500 bg-slate-800 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                    />
+                    <label htmlFor="terms" className="text-xs text-slate-400 cursor-pointer">
+                        Li e aceito os <Link to="/terms" className="text-emerald-400 hover:underline">Termos de Uso</Link> e a <Link to="/privacy" className="text-emerald-400 hover:underline">Política de Privacidade</Link>.
+                    </label>
+                </div>
+            )}
+
             <button 
               type="submit" 
-              disabled={loading} 
-              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg transition-all shadow-lg hover:shadow-emerald-500/20 flex items-center justify-center gap-2 mt-6"
+              // Bloqueia se for cadastro E termos não aceitos
+              disabled={loading || (!isLogin && !acceptedTerms)} 
+              className={`w-full font-bold py-3 rounded-lg transition-all shadow-lg flex items-center justify-center gap-2 mt-6 ${
+                  loading || (!isLogin && !acceptedTerms)
+                  ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white hover:shadow-emerald-500/20'
+              }`}
             >
               {loading ? 'Processando...' : (isLogin ? (show2FAInput ? 'Verificar Código' : <>Entrar <ArrowRight size={18}/></>) : 'Finalizar Cadastro')}
             </button>

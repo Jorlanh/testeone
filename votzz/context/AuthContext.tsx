@@ -1,12 +1,13 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import api from '../services/api';
-import { LoginResponse, User, LoginCredentials } from '../types';
+import { LoginResponse, User } from '../types';
 import { useNavigate } from 'react-router-dom';
 
 interface AuthContextData {
   user: User | null;
   isAuthenticated: boolean;
-  login: (credentials: LoginCredentials) => Promise<void>;
+  // A função login agora recebe a RESPOSTA do backend, não as credenciais
+  login: (data: LoginResponse) => void; 
   selectContext: (userId: string) => Promise<void>;
   signOut: () => void;
   loading: boolean;
@@ -31,7 +32,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(false);
   }, []);
 
-  const handleLoginSuccess = (data: LoginResponse) => {
+  // Esta função processa os dados e salva no estado/localStorage
+  const processLoginData = (data: LoginResponse) => {
       const userToSave: User = {
         id: data.id || 'temp',
         nome: data.nome || '',
@@ -60,29 +62,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       else navigate('/dashboard');
   };
 
-  const login = async ({ email, password }: LoginCredentials) => {
-    try {
-      // Tenta login. Se houver múltiplos, o backend retorna multipleProfiles: true
-      const response = await api.post('/auth/login', { login: email, password });
-      
-      if (response.data.multipleProfiles) {
-          // Salva as opções no state da navegação e vai para a tela de seleção
-          navigate('/select-context', { state: { options: response.data.profiles } });
-          return;
-      }
-
-      handleLoginSuccess(response.data);
-
-    } catch (error) {
-      throw error;
-    }
+  // A função exposta 'login' apenas chama o processador de dados
+  // Não fazemos api.post aqui, pois o Auth.tsx já fez para tratar 2FA/Multi-perfil
+  const login = (data: LoginResponse) => {
+      processLoginData(data);
   };
 
   const selectContext = async (userId: string) => {
       try {
           // Chama o endpoint específico ou o login com ID selecionado
           const response = await api.post('/auth/select-context', { userId });
-          handleLoginSuccess(response.data);
+          processLoginData(response.data);
       } catch (error) {
           console.error("Erro ao selecionar contexto", error);
           alert("Erro ao entrar no perfil selecionado.");

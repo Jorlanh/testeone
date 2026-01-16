@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
@@ -26,7 +26,7 @@ import SuperAdminDashboard from './pages/dashboards/SuperAdminDashboard';
 import AffiliateDashboard from './pages/dashboards/AffiliateDashboard';
 import Dashboard from './pages/Dashboard';
 
-// Funcionalidades do Sistema
+// Funcionalidades
 import SubscriptionRenovation from './pages/subscription/SubscriptionRenovation'; 
 import AssemblyList from './pages/AssemblyList';
 import CreateAssembly from './pages/CreateAssembly';
@@ -56,36 +56,49 @@ const PrivateRoute = ({ children, allowedRoles }: { children: React.ReactNode, a
   return <>{children}</>;
 };
 
-// Componente interno com as Rotas e lógica de Socket
 const AppRoutes: React.FC = () => {
-    // LÓGICA DO WEBSOCKET PARA CONTAGEM ONLINE
+    const { isAuthenticated } = useAuth(); 
+    const clientRef = useRef<Client | null>(null);
+
+    // LÓGICA DO WEBSOCKET (SEM LOGS)
     useEffect(() => {
         const token = localStorage.getItem('@Votzz:token');
-        if (!token) return;
+        
+        if (!isAuthenticated || !token) {
+            if (clientRef.current) {
+                clientRef.current.deactivate();
+                clientRef.current = null;
+            }
+            return;
+        }
+
+        if (clientRef.current && clientRef.current.active) {
+            return;
+        }
 
         const socketUrl = import.meta.env.VITE_API_URL 
             ? `${import.meta.env.VITE_API_URL.replace('/api', '')}/ws-votzz`
             : 'http://localhost:8080/ws-votzz';
 
-        const socket = new SockJS(socketUrl);
-        const stompClient = new Client({
-            webSocketFactory: () => socket,
+        const client = new Client({
+            webSocketFactory: () => new SockJS(socketUrl),
             connectHeaders: { Authorization: `Bearer ${token}` },
-            onConnect: () => {
-                console.log("WebSocket Conectado (Contabilizando Online)");
-            },
-            onDisconnect: () => {
-                console.log("WebSocket Desconectado");
-            },
+            reconnectDelay: 5000,
+            heartbeatIncoming: 4000,
+            heartbeatOutgoing: 4000,
+            // Logs removidos para limpar o console
+            onConnect: () => {}, 
+            onStompError: () => {},
             debug: () => {} 
         });
 
-        stompClient.activate();
+        client.activate();
+        clientRef.current = client;
 
         return () => {
-            stompClient.deactivate();
+            // Cleanup gerenciado pelo clientRef
         };
-    }, []);
+    }, [isAuthenticated]);
 
     return (
         <Routes>
@@ -147,7 +160,7 @@ const AppRoutes: React.FC = () => {
 
           <Route path="/tickets" element={
             <PrivateRoute allowedRoles={['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER']}>
-               <Layout><Tickets /></Layout>
+                <Layout><Tickets /></Layout>
             </PrivateRoute>
           } />
 
@@ -165,7 +178,7 @@ const AppRoutes: React.FC = () => {
 
           <Route path="/subscription/renew" element={
             <PrivateRoute allowedRoles={['SINDICO', 'MANAGER', 'ADM_CONDO']}>
-               <Layout><SubscriptionRenovation /></Layout>
+                <Layout><SubscriptionRenovation /></Layout>
             </PrivateRoute>
           } />
 
@@ -188,7 +201,6 @@ const AppRoutes: React.FC = () => {
 }
 
 function App() {
-  // AQUI ESTÁ A CORREÇÃO PRINCIPAL: O Router envolve o AuthProvider
   return (
     <Router>
       <AuthProvider>

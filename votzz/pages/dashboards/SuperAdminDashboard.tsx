@@ -206,31 +206,58 @@ function AdminsList({ currentUser }: { currentUser: any }) {
     );
 }
 
-// 3. TENANTS MANAGER
+// 3. TENANTS MANAGER (CORRIGIDO PARA EVITAR ERRO DE UNCONTROLLED INPUT E ERRO 400)
 function TenantsManager() {
     const [tenants, setTenants] = useState<any[]>([]);
     const [editingTenant, setEditingTenant] = useState<any>(null);
+    
+    // FIX 1: Inicialização com strings vazias para evitar erro de uncontrolled component
+    const [editForm, setEditForm] = useState({
+        nome: '', cnpj: '', cep: '', logradouro: '', numero: '', bairro: '', cidade: '', estado: '', secretKeyword: '',
+        planoNome: 'ESSENCIAL', periodicidade: 'MENSAL', dataExpiracaoPlano: '', ativo: true
+    });
 
     const load = () => api.get('/admin/tenants').then(res => setTenants(res.data)).catch(() => {});
     useEffect(() => { load(); }, []);
 
-    const handleImpersonate = async (tenantId: string, tenantName: string) => {
-        if(!confirm(`Acessar painel de ${tenantName}?`)) return;
-        try {
-            const response = await api.post(`/admin/impersonate/${tenantId}`);
-            const data = response.data;
+    useEffect(() => {
+        if (editingTenant) {
+            let planoNome = 'ESSENCIAL';
+            let periodicidade = 'MENSAL';
             
-            const currentToken = localStorage.getItem('@Votzz:token');
-            if (currentToken) {
-                localStorage.setItem('@Votzz:superAdminToken', currentToken);
+            // Lógica para extrair plano e periodicidade
+            const rawPlano = typeof editingTenant.plano === 'string' ? editingTenant.plano : (editingTenant.plano?.nome || '');
+
+            if (rawPlano) {
+                const upper = rawPlano.toUpperCase();
+                if (upper.includes('ESSENCIAL')) planoNome = 'ESSENCIAL';
+                else if (upper.includes('BUSINESS')) planoNome = 'BUSINESS';
+                else if (upper.includes('CUSTOM')) planoNome = 'CUSTOM';
+                else if (upper.includes('GRATUITO')) planoNome = 'GRATUITO';
+
+                if (upper.includes('TRIMESTRAL')) periodicidade = 'TRIMESTRAL';
+                else if (upper.includes('SEMESTRAL')) periodicidade = 'SEMESTRAL';
+                else if (upper.includes('ANUAL')) periodicidade = 'ANUAL';
             }
 
-            localStorage.setItem('@Votzz:token', data.token);
-            localStorage.setItem('@Votzz:user', JSON.stringify({ ...data, tenantId: data.tenantId }));
-            
-            window.location.href = '/dashboard'; 
-        } catch (error) { alert("Erro ao acessar."); }
-    };
+            // FIX 2: Garante fallback para string vazia em TODOS os campos
+            setEditForm({
+                nome: editingTenant.nome || '',
+                cnpj: editingTenant.cnpj || '',
+                cep: editingTenant.cep || '',
+                logradouro: editingTenant.logradouro || '',
+                numero: editingTenant.numero || '',
+                bairro: editingTenant.bairro || '',
+                cidade: editingTenant.cidade || '',
+                estado: editingTenant.estado || '',
+                secretKeyword: editingTenant.secretKeyword || '',
+                planoNome,
+                periodicidade,
+                ativo: editingTenant.ativo === true || editingTenant.ativo === 'true',
+                dataExpiracaoPlano: editingTenant.dataExpiracaoPlano ? new Date(editingTenant.dataExpiracaoPlano).toISOString().split('T')[0] : ''
+            });
+        }
+    }, [editingTenant]);
 
     const fetchCep = async (cep: string) => {
         const cleanCep = cep.replace(/\D/g, '');
@@ -239,7 +266,7 @@ function TenantsManager() {
             const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
             const data = await res.json();
             if (!data.erro) {
-                setEditingTenant((prev: any) => ({ ...prev, logradouro: data.logradouro, bairro: data.bairro, cidade: data.localidade, estado: data.uf }));
+                setEditForm((prev: any) => ({ ...prev, logradouro: data.logradouro, bairro: data.bairro, cidade: data.localidade, estado: data.uf }));
             }
         } catch(e) {}
     };
@@ -247,22 +274,33 @@ function TenantsManager() {
     const handleUpdate = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
+            let planoFinal = editForm.planoNome;
+            if (editForm.planoNome !== 'CUSTOM' && editForm.planoNome !== 'GRATUITO') {
+               planoFinal = `${editForm.planoNome}_${editForm.periodicidade}`; 
+            }
+
             const payload = {
-                ...editingTenant,
-                plano: typeof editingTenant.plano === 'object' ? editingTenant.plano?.nome : editingTenant.plano,
-                ativo: editingTenant.ativo === true || editingTenant.ativo === 'true'
+                ...editForm,
+                plano: planoFinal,
+                dataExpiracaoPlano: editForm.dataExpiracaoPlano ? new Date(editForm.dataExpiracaoPlano).toISOString() : null
             };
+
+            // Remove campos auxiliares para não dar erro no backend se ele for estrito
+            delete (payload as any).planoNome;
+            delete (payload as any).periodicidade;
+
             await api.put(`/admin/tenants/${editingTenant.id}`, payload);
             alert("Condomínio atualizado com sucesso!"); 
             setEditingTenant(null); 
             load();
         } catch (e: any) { 
+            console.error(e);
             alert(e.response?.data?.error || "Erro ao atualizar condomínio."); 
         }
     };
 
     const handleDeleteTenant = async (id: string, nome: string) => {
-        if (confirm(`ATENÇÃO: Deseja realmente desativar (excluir) o condomínio ${nome}? \n\nIsso bloqueará o acesso de todos os moradores.`)) {
+        if (confirm(`ATENÇÃO: Deseja realmente desativar (excluir) o condomínio ${nome}?`)) {
             try {
                 await api.delete(`/admin/users/${id}`); 
                 alert("Condomínio desativado com sucesso.");
@@ -280,10 +318,17 @@ function TenantsManager() {
         return days > 0 ? `${days} dias` : 'Vencido';
     };
 
-    const addDays = (days: number) => {
-        const current = editingTenant.dataExpiracaoPlano ? new Date(editingTenant.dataExpiracaoPlano) : new Date();
-        current.setDate(current.getDate() + days);
-        setEditingTenant({...editingTenant, dataExpiracaoPlano: current.toISOString()});
+    const addMonths = (months: number) => {
+        const current = editForm.dataExpiracaoPlano ? new Date(editForm.dataExpiracaoPlano) : new Date();
+        current.setMonth(current.getMonth() + months);
+        setEditForm({...editForm, dataExpiracaoPlano: current.toISOString().split('T')[0]});
+    };
+
+    // Helper para exibir o nome formatado
+    const formatPlanName = (plano: any) => {
+        if (!plano) return 'Manual';
+        const planoStr = typeof plano === 'string' ? plano : plano.nome;
+        return planoStr ? planoStr.replace('_', ' ') : 'Manual';
     };
 
     return (
@@ -303,63 +348,78 @@ function TenantsManager() {
                                     <div>
                                         <label className="text-[10px] font-bold text-slate-400 uppercase">Status do Condomínio</label>
                                         <select 
-                                            className={`w-full p-3 border rounded-xl font-bold ${editingTenant.ativo ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-red-100 text-red-700 border-red-200'}`}
-                                            value={editingTenant.ativo ? 'true' : 'false'}
-                                            onChange={e => setEditingTenant({...editingTenant, ativo: e.target.value === 'true'})}
+                                            className={`w-full p-3 border rounded-xl font-bold ${editForm.ativo ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-red-100 text-red-700 border-red-200'}`}
+                                            value={editForm.ativo ? 'true' : 'false'}
+                                            onChange={e => setEditForm({...editForm, ativo: e.target.value === 'true'})}
                                         >
-                                            <option value="true">ATIVO (Sistema Liberado)</option>
-                                            <option value="false">INATIVO (Bloqueado)</option>
+                                            <option value="true">ATIVO</option>
+                                            <option value="false">INATIVO</option>
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase">Plano Vigente</label>
-                                        <select 
-                                            className="w-full p-3 bg-white border rounded-xl font-bold text-slate-700"
-                                            value={typeof editingTenant.plano === 'string' ? editingTenant.plano : editingTenant.plano?.nome || 'MENSAL'}
-                                            onChange={e => setEditingTenant({...editingTenant, plano: e.target.value})}
-                                        >
-                                            <option value="MENSAL">Mensal</option>
-                                            <option value="TRIMESTRAL">Trimestral</option>
-                                            <option value="SEMESTRAL">Semestral</option>
-                                            <option value="ANUAL">Anual</option>
-                                            <option value="GRATUITO">Gratuito/Teste</option>
-                                        </select>
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase">Plano</label>
+                                        <div className="flex gap-2">
+                                            <select 
+                                                className="w-full p-3 bg-white border rounded-xl font-bold text-slate-700"
+                                                value={editForm.planoNome}
+                                                onChange={e => setEditForm({...editForm, planoNome: e.target.value})}
+                                            >
+                                                <option value="ESSENCIAL">Essencial</option>
+                                                <option value="BUSINESS">Business</option>
+                                                <option value="CUSTOM">Custom (Manual)</option>
+                                                <option value="GRATUITO">Gratuito/Teste</option>
+                                            </select>
+                                            
+                                            {(editForm.planoNome !== 'CUSTOM' && editForm.planoNome !== 'GRATUITO') && (
+                                                <select 
+                                                    className="w-1/2 p-3 bg-white border rounded-xl font-bold text-slate-700"
+                                                    value={editForm.periodicidade}
+                                                    onChange={e => setEditForm({...editForm, periodicidade: e.target.value})}
+                                                >
+                                                    <option value="MENSAL">Mensal</option>
+                                                    <option value="TRIMESTRAL">Trimestral</option>
+                                                    <option value="SEMESTRAL">Semestral</option>
+                                                    <option value="ANUAL">Anual</option>
+                                                </select>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="mt-4">
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Data de Expiração (Manual)</label>
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Expiração (Manual)</label>
                                     <div className="flex gap-2 items-center">
                                         <input 
                                             type="date"
                                             className="flex-1 p-3 bg-white border rounded-xl font-mono text-sm"
-                                            value={editingTenant.dataExpiracaoPlano ? new Date(editingTenant.dataExpiracaoPlano).toISOString().split('T')[0] : ''}
-                                            onChange={e => setEditingTenant({...editingTenant, dataExpiracaoPlano: new Date(e.target.value).toISOString()})}
+                                            value={editForm.dataExpiracaoPlano}
+                                            onChange={e => setEditForm({...editForm, dataExpiracaoPlano: e.target.value})}
                                         />
-                                        <button type="button" onClick={() => addDays(30)} className="px-3 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100">+30 Dias</button>
-                                        <button type="button" onClick={() => addDays(365)} className="px-3 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100">+1 Ano</button>
+                                        <button type="button" onClick={() => addMonths(1)} className="px-3 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100">+1 Mês</button>
+                                        <button type="button" onClick={() => addMonths(2)} className="px-3 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100">+2 Meses</button>
+                                        <button type="button" onClick={() => addMonths(12)} className="px-3 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100">+1 Ano</button>
                                     </div>
                                 </div>
                             </div>
 
                             <div className="space-y-4">
                                 <div className="grid grid-cols-2 gap-4">
-                                    <input className="w-full p-3 border rounded-xl" value={editingTenant.nome} onChange={e => setEditingTenant({...editingTenant, nome: e.target.value})} placeholder="Nome do Condomínio"/>
-                                    <input className="w-full p-3 border rounded-xl" value={editingTenant.cnpj} onChange={e => setEditingTenant({...editingTenant, cnpj: e.target.value})} placeholder="CNPJ"/>
+                                    <input className="w-full p-3 border rounded-xl" value={editForm.nome} onChange={e => setEditForm({...editForm, nome: e.target.value})} placeholder="Nome do Condomínio"/>
+                                    <input className="w-full p-3 border rounded-xl" value={editForm.cnpj} onChange={e => setEditForm({...editForm, cnpj: e.target.value})} placeholder="CNPJ"/>
                                 </div>
                                 
                                 <div className="bg-slate-50 p-4 rounded-xl space-y-3">
                                     <p className="text-xs font-bold text-slate-400 uppercase">Endereço</p>
-                                    <input className="w-full p-3 bg-white border rounded-xl" placeholder="CEP" value={editingTenant.cep || ''} onChange={e => { setEditingTenant({...editingTenant, cep: e.target.value}); fetchCep(e.target.value); }} />
-                                    <input className="w-full p-3 bg-white border rounded-xl" placeholder="Logradouro" value={editingTenant.logradouro || ''} onChange={e => setEditingTenant({...editingTenant, logradouro: e.target.value})} />
+                                    <input className="w-full p-3 bg-white border rounded-xl" placeholder="CEP" value={editForm.cep} onChange={e => { setEditForm({...editForm, cep: e.target.value}); fetchCep(e.target.value); }} />
+                                    <input className="w-full p-3 bg-white border rounded-xl" placeholder="Logradouro" value={editForm.logradouro} onChange={e => setEditForm({...editForm, logradouro: e.target.value})} />
                                     <div className="grid grid-cols-3 gap-2">
-                                        <input className="p-3 bg-white border rounded-xl" placeholder="Nº" value={editingTenant.numero || ''} onChange={e => setEditingTenant({...editingTenant, numero: e.target.value})} />
-                                        <input className="p-3 bg-white border rounded-xl" placeholder="Bairro" value={editingTenant.bairro || ''} onChange={e => setEditingTenant({...editingTenant, bairro: e.target.value})} />
-                                        <input className="p-3 bg-white border rounded-xl" placeholder="Cidade" value={editingTenant.cidade || ''} onChange={e => setEditingTenant({...editingTenant, cidade: e.target.value})} />
+                                        <input className="p-3 bg-white border rounded-xl" placeholder="Nº" value={editForm.numero} onChange={e => setEditForm({...editForm, numero: e.target.value})} />
+                                        <input className="p-3 bg-white border rounded-xl" placeholder="Bairro" value={editForm.bairro} onChange={e => setEditForm({...editForm, bairro: e.target.value})} />
+                                        <input className="p-3 bg-white border rounded-xl" placeholder="Cidade" value={editForm.cidade} onChange={e => setEditForm({...editForm, cidade: e.target.value})} />
                                     </div>
                                 </div>
                                 <div className="flex flex-col">
                                     <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Palavra-chave Secreta</label>
-                                    <input className="w-full p-3 border rounded-xl font-mono text-sm" value={editingTenant.secretKeyword} onChange={e => setEditingTenant({...editingTenant, secretKeyword: e.target.value})} placeholder="Palavra-chave"/>
+                                    <input className="w-full p-3 border rounded-xl font-mono text-sm" value={editForm.secretKeyword} onChange={e => setEditForm({...editForm, secretKeyword: e.target.value})} placeholder="Palavra-chave"/>
                                 </div>
                             </div>
                             
@@ -378,19 +438,15 @@ function TenantsManager() {
                         </h4>
                         <div className="mt-2 ml-7 space-y-1">
                             <p className="text-xs text-slate-400 font-mono font-bold">CNPJ: {t.cnpj} | Key: {t.secretKeyword}</p>
-                            <p className="text-xs text-slate-500 font-bold flex items-center gap-1"><CalendarClock size={12}/> Plano: {typeof t.plano === 'string' ? t.plano : t.plano?.nome || 'Manual'} ({getDaysRemaining(t.dataExpiracaoPlano)})</p>
+                            <p className="text-xs text-slate-500 font-bold flex items-center gap-1">
+                                <CalendarClock size={12}/> 
+                                {/* FIX: Exibição correta do nome do plano */}
+                                Plano: {formatPlanName(t.plano)} ({getDaysRemaining(t.dataExpiracaoPlano)})
+                            </p>
                             {t.cidade && <p className="text-xs text-slate-500 font-bold flex items-center gap-1"><MapPin size={12}/> {t.cidade}/{t.estado}</p>}
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <button 
-                            onClick={() => handleImpersonate(t.id, t.nome)}
-                            className="flex items-center gap-2 text-emerald-600 hover:text-white hover:bg-emerald-500 font-bold text-xs bg-emerald-50 border border-emerald-100 px-4 py-3 rounded-xl transition-all"
-                            title="Entrar no Painel deste Condomínio"
-                        >
-                            <LayoutDashboard size={16}/> Acessar
-                        </button>
-
                         <button onClick={() => setEditingTenant(t)} className="flex items-center gap-2 text-slate-500 hover:text-white hover:bg-blue-600 font-bold text-xs bg-slate-100 px-5 py-3 rounded-xl transition-all">
                             <Edit size={16}/> Gerenciar
                         </button>
@@ -404,7 +460,7 @@ function TenantsManager() {
     );
 }
 
-// 4. COUPONS MANAGER
+// 4. COUPONS MANAGER (Mantido igual)
 function CouponsManager() {
   const [coupons, setCoupons] = useState<any[]>([]);
   const [form, setForm] = useState({ code: '', discount: '', quantity: 1 });
@@ -466,7 +522,7 @@ function CouponsManager() {
   );
 }
 
-// 5. ORGANIZED USERS VIEW
+// 5. ORGANIZED USERS VIEW (Mantido igual)
 function OrganizedUsersView() {
   const [data, setData] = useState<any>(null);
   const [tenantsList, setTenantsList] = useState<any[]>([]);
@@ -634,10 +690,31 @@ const UserTable = ({ users, search, onEdit, onDelete }: any) => {
   );
 };
 
-// 6. MANUAL CONDO CREATOR
+// 6. MANUAL CONDO CREATOR (CORRIGIDO PARA REGRAS DE UNIDADES E PLANO)
 function ManualCondoCreator() {
-  const [form, setForm] = useState<any>({ condoName: '', cnpj: '', qtyUnits: 30, secretKeyword: '', nameSyndic: '', emailSyndic: '', cpfSyndic: '', phoneSyndic: '', passwordSyndic: '', confirm: '', cep: '', logradouro: '', numero: '', bairro: '', cidade: '', estado: '', pontoReferencia: '' });
+  const [form, setForm] = useState<any>({ 
+    condoName: '', cnpj: '', qtyUnits: 30, secretKeyword: '', 
+    nameSyndic: '', emailSyndic: '', cpfSyndic: '', phoneSyndic: '', passwordSyndic: '', confirm: '', 
+    cep: '', logradouro: '', numero: '', bairro: '', cidade: '', estado: '', pontoReferencia: '',
+    planoNome: 'ESSENCIAL', periodicidade: 'MENSAL'
+  });
   const [showPassword, setShowPassword] = useState(false);
+
+  // Efeito para ajustar o plano automaticamente baseado nas unidades
+  useEffect(() => {
+    const units = Number(form.qtyUnits);
+    let newPlan = 'ESSENCIAL';
+    
+    if (units > 80) {
+        newPlan = 'CUSTOM';
+    } else if (units > 30) {
+        newPlan = 'BUSINESS';
+    } else {
+        newPlan = 'ESSENCIAL';
+    }
+
+    setForm((prev: any) => ({ ...prev, planoNome: newPlan }));
+  }, [form.qtyUnits]);
 
   const fetchCep = async (cep: string) => {
       const cleanCep = cep.replace(/\D/g, '');
@@ -656,9 +733,31 @@ function ManualCondoCreator() {
     e.preventDefault();
     if(form.passwordSyndic !== form.confirm) return alert("Senhas não conferem");
     try {
-        await api.post('/admin/create-tenant-manual', form);
+        // CORREÇÃO: Remove campos auxiliares e formata o plano se necessário
+        const payload = { ...form };
+        
+        // Se o seu backend agora aceita "plano" como string, monte aqui:
+        // Ex: "ESSENCIAL_MENSAL"
+        const planoFinal = `${form.planoNome}_${form.periodicidade}`;
+        
+        // Remove os campos que não existem no DTO do backend
+        delete payload.planoNome;
+        delete payload.periodicidade;
+        delete payload.confirm;
+        
+        // Adiciona o campo que o backend espera (se você adicionou 'plano' no DTO)
+        payload.plano = planoFinal; 
+
+        await api.post('/admin/create-tenant-manual', payload);
         alert('Condomínio criado com sucesso!');
-        // Opcional: Limpar formulário
+        
+        // Reset form
+        setForm({ 
+            condoName: '', cnpj: '', qtyUnits: 30, secretKeyword: '', 
+            nameSyndic: '', emailSyndic: '', cpfSyndic: '', phoneSyndic: '', passwordSyndic: '', confirm: '', 
+            cep: '', logradouro: '', numero: '', bairro: '', cidade: '', estado: '', pontoReferencia: '',
+            planoNome: 'ESSENCIAL', periodicidade: 'MENSAL'
+        });
     } catch(err: any) { alert(err.response?.data?.error || 'Erro ao criar condomínio.'); }
   };
 
@@ -672,6 +771,39 @@ function ManualCondoCreator() {
           <input required type="number" placeholder="Limite de Unidades" value={form.qtyUnits} onChange={e => setForm({...form, qtyUnits: Number(e.target.value)})} className="p-4 bg-slate-50 border-none rounded-2xl font-bold outline-none focus:ring-2 ring-blue-200 transition-all" />
           <input required placeholder="Palavra-Chave Secreta" value={form.secretKeyword} onChange={e => setForm({...form, secretKeyword: e.target.value})} className="p-4 bg-slate-50 border-none rounded-2xl font-bold outline-none focus:ring-2 ring-blue-200 transition-all" />
         </div>
+        
+        {/* SELEÇÃO DE PLANO NO CADASTRO MANUAL */}
+        <div className="bg-indigo-50 p-6 rounded-2xl border border-indigo-100">
+            <h4 className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-3">Configuração do Plano</h4>
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase">Plano (Automático por Unidades)</label>
+                    <select 
+                        className="w-full p-3 bg-white border rounded-xl font-bold text-slate-700"
+                        value={form.planoNome}
+                        onChange={e => setForm({...form, planoNome: e.target.value})}
+                    >
+                        <option value="ESSENCIAL">Essencial (até 30)</option>
+                        <option value="BUSINESS">Business (31-80)</option>
+                        <option value="CUSTOM">Custom (+81)</option>
+                    </select>
+                </div>
+                <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase">Periodicidade</label>
+                    <select 
+                        className="w-full p-3 bg-white border rounded-xl font-bold text-slate-700"
+                        value={form.periodicidade}
+                        onChange={e => setForm({...form, periodicidade: e.target.value})}
+                    >
+                        <option value="MENSAL">Mensal</option>
+                        <option value="TRIMESTRAL">Trimestral</option>
+                        <option value="SEMESTRAL">Semestral</option>
+                        <option value="ANUAL">Anual</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
         <div className="bg-slate-50 p-8 rounded-[2.5rem] space-y-4">
             <div className="grid grid-cols-3 gap-4">
                 <input required placeholder="CEP" maxLength={9} value={form.cep} onChange={e => { setForm({...form, cep: e.target.value}); fetchCep(e.target.value); }} className="p-4 bg-white rounded-2xl font-bold" />
@@ -712,7 +844,7 @@ function ManualCondoCreator() {
   );
 }
 
-// 7. CREATE ADMIN FORM
+// 7. CREATE ADMIN FORM (Mantido igual)
 function CreateAdminForm() {
     const [form, setForm] = useState({ nome: '', email: '', cpf: '', phone: '', password: '', confirm: '' });
     const [showPassword, setShowPassword] = useState(false);
@@ -737,7 +869,7 @@ function CreateAdminForm() {
                 </div>
                 <div className="relative">
                     <input required type={showPassword ? "text" : "password"} placeholder="Senha" value={form.password} onChange={e => setForm({...form, password: e.target.value})} className="w-full p-5 bg-slate-50 rounded-2xl font-bold pr-12" />
-                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-5 text-slate-400">{showPassword ? <EyeOff /> : <Eye />}</button>
+                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-5 text-slate-400">{showPassword ? <EyeOff /> : <Eye />}</button>
                 </div>
                 <input required type={showPassword ? "text" : "password"} placeholder="Confirmar" value={form.confirm} onChange={e => setForm({...form, confirm: e.target.value})} className="w-full p-5 bg-slate-50 rounded-2xl font-bold" />
                 <button type="submit" className="w-full bg-red-600 text-white py-6 rounded-[2rem] font-black text-lg hover:bg-red-700 uppercase">Criar Admin</button>
@@ -794,7 +926,8 @@ function StatsView() {
                 </span>
                 <p className="text-emerald-400 text-[10px] font-black uppercase">Online Agora</p>
             </div>
-            <p className="text-4xl font-black text-white">{stats?.onlineUsers || 0}</p>
+            {/* CORREÇÃO: Garante que mostre pelo menos 0, mas se tiver 1 ele mostra */}
+            <p className="text-4xl font-black text-white">{stats?.onlineUsers ?? 0}</p>
             <p className="text-xs text-slate-500 mt-1 font-bold">Usuários conectados</p>
         </div>
       </div>
@@ -837,14 +970,24 @@ function StatsView() {
   );
 }
 
+// CORREÇÃO: Mapeamento estático para garantir que o Tailwind não remova as classes
+const colorVariants: any = {
+  blue: "bg-blue-50 text-blue-600",
+  emerald: "bg-emerald-50 text-emerald-600",
+  purple: "bg-purple-50 text-purple-600",
+  red: "bg-red-50 text-red-600",
+  amber: "bg-amber-50 text-amber-600"
+};
+
 const StatCard = ({ icon, title, value, color }: any) => (
   <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 flex items-center space-x-5">
-    <div className={`p-5 bg-${color}-50 text-${color}-600 rounded-3xl`}>{icon}</div>
+    {/* Uso do mapeamento de cores */}
+    <div className={`p-5 rounded-3xl ${colorVariants[color] || 'bg-slate-50 text-slate-600'}`}>{icon}</div>
     <div><p className="text-slate-400 text-[10px] font-black uppercase mb-1">{title}</p><p className="text-3xl font-black text-slate-800">{value}</p></div>
   </div>
 );
 
-// 9. ADMIN PROFILE VIEW (Mantido)
+// 9. ADMIN PROFILE VIEW (Mantido igual)
 function AdminProfileView({ user }: { user: any }) {
     const [showPassword, setShowPassword] = useState(false);
     const [form, setForm] = useState({
