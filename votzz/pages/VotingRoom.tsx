@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  ArrowLeft, MessageSquare, FileCheck, Shield, Video, Sparkles, Send, Lock, Clock, FileText, CheckCircle, Gavel, Scale, Download, Eye, EyeOff, Layers
+  ArrowLeft, MessageSquare, FileCheck, Shield, Video, Sparkles, Send, Lock, Clock, FileText, CheckCircle, Gavel, Scale, Download, Eye, EyeOff, Layers, X
 } from 'lucide-react';
 import api from '../services/api'; 
 import { useAuth } from '../context/AuthContext';
@@ -23,9 +23,14 @@ const VotingRoom: React.FC = () => {
   const [messages, setMessages] = useState<any[]>([]);
   
   // --- NOVA LÓGICA: MULTI-UNIDADES ---
-  // Se o usuário tiver múltiplas unidades, o peso do voto aumenta
-  const [myUnits, setMyUnits] = useState<string[]>([user?.unidade || 'N/A']);
-  const [totalWeight, setTotalWeight] = useState(1); 
+  // Carrega as unidades do morador. Se o backend enviar uma lista, usamos ela, senão usamos a unidade padrão.
+  const userUnits = (user as any)?.unidadesList || [user?.unidade].filter(Boolean) || ['N/A'];
+  const [myUnits, setMyUnits] = useState<string[]>(userUnits);
+  const [totalWeight, setTotalWeight] = useState(userUnits.length); 
+
+  // Estados de Controle do Modal de Unidades
+  const [showUnitModal, setShowUnitModal] = useState(false);
+  const [tempSelectedUnits, setTempSelectedUnits] = useState<string[]>(userUnits);
 
   // Estados de UI
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
@@ -220,13 +225,9 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
         console.error("Erro ao carregar assembleia:", e);
     }
 
-    // 2. Tenta carregar outras unidades do usuário no mesmo condomínio (Simulação Multi-Unit)
-    // Se o backend tiver um endpoint para isso, use aqui. Por enquanto, simulamos com base no login.
+    // 2. Multi-Unit Data
     if (user && user.role === 'MORADOR') {
-        // Exemplo: Se o backend retornar que esse CPF tem 3 unidades, setamos aqui
-        // const resUnits = await api.get('/users/me/units'); 
-        // setMyUnits(resUnits.data);
-        // setTotalWeight(resUnits.data.length);
+        // As unidades já são inicializadas no estado 'myUnits' vindo do AuthContext
     }
 
     try {
@@ -240,24 +241,33 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
   };
 
   // --- 3. AÇÕES ---
-  const handleVote = async () => {
+  
+  // Função que dispara o processo de voto
+  const handleVote = () => {
     if (!id || !selectedOption || !user) return;
     
-    // Se tiver mais de uma unidade, confirma com o usuário
-    if (totalWeight > 1) {
-        const confirm = window.confirm(`Você possui ${totalWeight} unidades neste condomínio. Seu voto será computado para todas elas. Deseja confirmar?`);
-        if (!confirm) return;
+    // Se o morador tem mais de 1 unidade, perguntamos por quais ele quer votar
+    if (myUnits.length > 1) {
+        setTempSelectedUnits(myUnits); // Reset para todas selecionadas por default
+        setShowUnitModal(true);
+    } else {
+        submitFinalVote(myUnits);
     }
+  };
 
+  // Função que envia o voto real para o backend
+  const submitFinalVote = async (unitsToVote: string[]) => {
     try {
       const response = await api.post(`/assemblies/${id}/vote`, { 
         optionId: selectedOption, 
-        userId: user.id,
-        applyToAllUnits: true // Flag nova para o backend saber que deve replicar
+        userId: user?.id,
+        units: unitsToVote // Enviamos a lista de strings
       });
       setHasVoted(true);
       setVoteReceipt(response.data.id || 'CONFIRMADO-MULTI');
-      alert(`Voto registrado com sucesso${totalWeight > 1 ? ` para ${totalWeight} unidades` : ''}!`);
+      setShowUnitModal(false);
+      setTotalWeight(unitsToVote.length); // Atualiza o peso baseado na seleção final
+      alert(`Voto registrado com sucesso para ${unitsToVote.length} unidade(s)!`);
       loadData(); 
     } catch (e: any) { 
         alert("Erro ao votar: " + (e.response?.data?.message || "Tente novamente.")); 
@@ -305,7 +315,6 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
 
   const handleExportDossier = () => {
       if(!id) return;
-      // CORREÇÃO: Uso de (import.meta as any) para evitar erro TS2339
       const apiUrl = (import.meta as any).env.VITE_API_URL || 'http://localhost:8080/api';
       window.open(`${apiUrl}/assemblies/${id}/dossier`, '_blank');
   };
@@ -400,7 +409,6 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
   const handleSummarizeIA = () => {
       if(!id) return;
       setSummarizing(true);
-      // CORREÇÃO: Uso de (import.meta as any) para evitar erro TS2339
       const apiUrl = (import.meta as any).env.VITE_API_URL || 'http://localhost:8080/api';
       window.open(`${apiUrl}/chat/assemblies/${id}/resumo-pdf`, '_blank');
       setTimeout(() => setSummarizing(false), 2000);
@@ -427,6 +435,10 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
             { id: 'abstencao', descricao: 'Abstenção' }
         ];
 
+  const toggleUnit = (unit: string) => {
+    setTempSelectedUnits(prev => prev.includes(unit) ? prev.filter(u => u !== unit) : [...prev, unit]);
+  };
+
   return (
     <div className="space-y-6 pb-20 p-4 md:p-6">
       
@@ -452,7 +464,7 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                 <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <div>
                         <h2 className="text-2xl font-black flex items-center gap-2">
-                           <Gavel className="w-6 h-6 text-emerald-400" /> Painel Legal do Síndico
+                            <Gavel className="w-6 h-6 text-emerald-400" /> Painel Legal do Síndico
                         </h2>
                         <p className="text-slate-400 text-sm mt-1">Controle de quórum e formalização jurídica (Art. 1.354-A CC).</p>
                     </div>
@@ -479,7 +491,6 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                 </div>
               </div>
 
-              {/* SEÇÃO DE ENCERRAMENTO E ATA */}
               <div className="grid grid-cols-1 gap-6">
                   {!isClosed ? (
                     <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
@@ -491,7 +502,6 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                     </div>
                   ) : (
                     <div className="space-y-6">
-                        {/* CABEÇALHO VERDE */}
                         <div className="bg-emerald-50 p-6 rounded-[2rem] border border-emerald-100 shadow-sm flex items-center gap-4">
                             <div className="bg-emerald-100 p-3 rounded-full">
                                 <CheckCircle className="w-6 h-6 text-emerald-600"/>
@@ -502,12 +512,10 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                             </div>
                         </div>
 
-                        {/* VISUALIZAÇÃO DA ATA */}
                         <div className="bg-white p-6 rounded-[1rem] shadow-inner border border-slate-200 font-mono text-xs leading-relaxed text-slate-700 overflow-y-auto max-h-96 whitespace-pre-wrap">
                             {ataPreview}
                         </div>
 
-                        {/* BOTÕES DE AÇÃO */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <button onClick={handlePrintAta} className="w-full bg-slate-800 text-white px-6 py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-900 transition-all shadow-lg">
                                 <FileText className="w-5 h-5" /> Baixar Ata (PDF)
@@ -521,7 +529,6 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
               </div>
           </div>
       ) : (
-        /* ... CONTEÚDO DA ABA DE VOTAÇÃO (MORADOR) ... */
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-in fade-in">
             
             <div className="lg:col-span-8 space-y-6">
@@ -591,14 +598,12 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                         Cédula de Votação
                     </h3>
 
-                    {/* BOX DE PODER DE VOTO MULTI-UNIDADE */}
                     <div className="bg-slate-50 p-3 rounded-lg mb-4 border border-slate-200">
                         <p className="text-xs text-slate-500 uppercase font-bold mb-1 flex justify-between">
                             <span>Seu Poder de Voto</span>
                             {totalWeight > 1 && <span className="text-emerald-600 flex items-center gap-1"><Layers size={10}/> {totalWeight} Unidades</span>}
                         </p>
                         
-                        {/* Lista as unidades */}
                         <div className="flex flex-wrap gap-1 mb-2">
                             {myUnits.map((u, i) => (
                                 <span key={i} className="text-[10px] bg-white border px-1.5 py-0.5 rounded text-slate-600 font-mono">{u}</span>
@@ -716,6 +721,51 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                     </form>
                 </div>
             </div>
+        </div>
+      )}
+
+      {/* MODAL DE SELEÇÃO DE UNIDADES (APARECE SE TIVER > 1 UNIDADE) */}
+      {showUnitModal && (
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl border border-slate-100 scale-in-center">
+            <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                    <Layers className="text-emerald-600" /> Unidades
+                </h3>
+                <button onClick={() => setShowUnitModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                    <X size={20} />
+                </button>
+            </div>
+            
+            <p className="text-sm text-slate-500 mb-6 font-medium text-center">Você possui múltiplas unidades. Selecione por quais deseja votar agora:</p>
+            
+            <div className="space-y-2 mb-8 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+              {myUnits.map(unit => (
+                <label key={unit} className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all cursor-pointer ${tempSelectedUnits.includes(unit) ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100 hover:bg-slate-50'}`}>
+                  <input 
+                    type="checkbox" 
+                    checked={tempSelectedUnits.includes(unit)}
+                    onChange={() => {
+                        toggleUnit(unit);
+                    }}
+                    className="w-5 h-5 text-emerald-600 rounded-lg border-slate-300 focus:ring-emerald-500"
+                  />
+                  <span className="font-bold text-slate-700">{unit}</span>
+                </label>
+              ))}
+            </div>
+
+            <div className="space-y-3">
+              <button 
+                onClick={() => submitFinalVote(tempSelectedUnits)}
+                disabled={tempSelectedUnits.length === 0}
+                className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl shadow-xl hover:bg-slate-800 disabled:opacity-30 transition-all flex items-center justify-center gap-2"
+              >
+                Confirmar {tempSelectedUnits.length} Voto(s)
+              </button>
+              <button onClick={() => setShowUnitModal(false)} className="w-full text-slate-400 font-bold py-2 hover:text-slate-600 transition-colors text-center">Cancelar</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

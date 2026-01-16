@@ -31,9 +31,14 @@ const Governance: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   // --- LÓGICA DE MULTI-UNIDADES ---
-  // Verifica quantas unidades o usuário tem neste condomínio para calcular o peso do voto
-  // (Lógica simulada baseada na existência do usuário, ideal vir do backend)
-  const myUnitCount = 1; // Em produção: user?.units?.length || 1;
+  // Carrega as unidades do morador do contexto de autenticação
+  const userUnits = (user as any)?.unidadesList || (user?.unidade ? [user.unidade] : []);
+  const myUnitCount = userUnits.length;
+
+  // Estados para o Modal de Seleção de Unidades
+  const [showUnitModal, setShowUnitModal] = useState(false);
+  const [tempSelectedUnits, setTempSelectedUnits] = useState<string[]>(userUnits);
+  const [pendingPollVote, setPendingPollVote] = useState<{pollId: string, optionId: string} | null>(null);
 
   const canManage = ['SINDICO', 'MANAGER', 'ADM_CONDO'].includes(user?.role || '');
 
@@ -89,14 +94,9 @@ const Governance: React.FC = () => {
 
   // --- ACTIONS ---
 
+  // Função que dispara a lógica de voto (abre modal se necessário)
   const handleVote = async (pollId: string, optionLabel: string) => {
       if (!data) return;
-
-      // Confirmação se tiver múltiplas unidades
-      if (myUnitCount > 1) {
-          const confirm = window.confirm(`Você possui ${myUnitCount} unidades. Seu voto será aplicado para todas elas. Confirmar?`);
-          if (!confirm) return;
-      }
 
       const allPolls = [...(data.polls.active || []), ...(data.polls.archived || [])];
       const poll = allPolls.find(p => p.id === pollId);
@@ -104,13 +104,25 @@ const Governance: React.FC = () => {
       
       if (!option) return;
 
+      // Se tiver mais de uma unidade, abre o modal para ele escolher por quais quer votar
+      if (myUnitCount > 1) {
+          setTempSelectedUnits(userUnits); // Reset para todas selecionadas por default
+          setPendingPollVote({ pollId, optionId: option.id });
+          setShowUnitModal(true);
+      } else {
+          submitPollVote(pollId, option.id, userUnits);
+      }
+  };
+
+  // Função que faz o POST real com a lista de unidades
+  const submitPollVote = async (pollId: string, optionId: string, unitsToVote: string[]) => {
       try {
-          // Envia flag para o backend replicar o voto
           await api.post(`/governance/polls/${pollId}/vote`, { 
-              optionId: option.id,
-              applyToAllUnits: true 
+              optionId: optionId,
+              units: unitsToVote // Backend recebe a lista: ["Bloco A unidade 202", "Bloco B unidade 203"]
           });
-          alert(`Voto registrado com sucesso${myUnitCount > 1 ? ` (${myUnitCount}x)` : ''}!`);
+          alert(`Voto registrado com sucesso para ${unitsToVote.length} unidade(s)!`);
+          setShowUnitModal(false);
           loadDashboard(); 
       } catch (e: any) { 
           alert("Erro ao votar: " + (e.response?.data?.message || e.message)); 
@@ -270,6 +282,10 @@ const Governance: React.FC = () => {
   const getVoteCount = (poll: any, optionId: string) => {
       if(!poll.votes) return 0;
       return poll.votes.filter((v: any) => v.optionId === optionId).length;
+  };
+
+  const toggleUnit = (unit: string) => {
+    setTempSelectedUnits(prev => prev.includes(unit) ? prev.filter(u => u !== unit) : [...prev, unit]);
   };
 
   if (loading) return <div className="p-10 text-center text-slate-500 animate-pulse">Carregando painel de governança...</div>;
@@ -671,6 +687,49 @@ const Governance: React.FC = () => {
                </div>
            </div>
        )}
+
+      {/* MODAL DE SELEÇÃO DE UNIDADES (PARA MICRO-DECISÕES) */}
+      {showUnitModal && (
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl border border-slate-100 scale-in-center">
+            <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                    <Layers className="text-emerald-600" /> Unidades
+                </h3>
+                <button onClick={() => setShowUnitModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                    <X size={20} />
+                </button>
+            </div>
+            
+            <p className="text-sm text-slate-500 mb-6 font-medium text-center">Selecione por quais unidades deseja votar nesta micro-decisão:</p>
+            
+            <div className="space-y-2 mb-8 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+              {userUnits.map((unit: string) => (
+                <label key={unit} className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all cursor-pointer ${tempSelectedUnits.includes(unit) ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100 hover:bg-slate-50'}`}>
+                  <input 
+                    type="checkbox" 
+                    checked={tempSelectedUnits.includes(unit)}
+                    onChange={() => toggleUnit(unit)}
+                    className="w-5 h-5 text-emerald-600 rounded-lg border-slate-300 focus:ring-emerald-500"
+                  />
+                  <span className="font-bold text-slate-700">{unit}</span>
+                </label>
+              ))}
+            </div>
+
+            <div className="space-y-3">
+              <button 
+                onClick={() => pendingPollVote && submitPollVote(pendingPollVote.pollId, pendingPollVote.optionId, tempSelectedUnits)}
+                disabled={tempSelectedUnits.length === 0}
+                className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl shadow-xl hover:bg-slate-800 disabled:opacity-30 transition-all flex items-center justify-center gap-2"
+              >
+                Confirmar {tempSelectedUnits.length} Voto(s)
+              </button>
+              <button onClick={() => setShowUnitModal(false)} className="w-full text-slate-400 font-bold py-2 hover:text-slate-600 transition-colors text-center">Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
