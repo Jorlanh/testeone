@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
-import { Lock, Mail, ShieldCheck, ArrowRight, AlertCircle, User as UserIcon, TrendingUp, Building, Phone, CheckCircle, Fingerprint, Plus, Trash2, Key, FileText } from 'lucide-react';
+import { Lock, Mail, ShieldCheck, ArrowRight, AlertCircle, User as UserIcon, TrendingUp, Building, Phone, CheckCircle, Fingerprint, Plus, Trash2, Key, FileText, Eye, EyeOff } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -16,6 +16,72 @@ const getDeviceId = () => {
     return id;
 };
 
+// --- CONTENT CONSTANTS (Termos e Política) ---
+const TERMS_CONTENT = `
+  <h3 class="font-bold text-lg mb-2">1. DEFINIÇÕES</h3>
+  <p>Para fins destes Termos:</p>
+  <ul class="list-disc pl-5 space-y-1 mb-4">
+    <li><strong>Plataforma:</strong> o aplicativo Votzz.</li>
+    <li><strong>Administrador:</strong> síndico, gestor, representante legal ou pessoa autorizada.</li>
+    <li><strong>Usuário:</strong> pessoa física com acesso à plataforma.</li>
+    <li><strong>Instituição:</strong> condomínio, empresa, associação ou clube cadastrado.</li>
+  </ul>
+
+  <h3 class="font-bold text-lg mb-2">2. OBJETO</h3>
+  <p>A plataforma tem por objeto fornecer ferramentas tecnológicas de apoio à gestão institucional, incluindo:</p>
+  <ul class="list-disc pl-5 space-y-1 mb-4">
+    <li>Realização de assembleias e votações eletrônicas;</li>
+    <li>Emissão de atas e relatórios;</li>
+    <li>Governança digital com selo verificável;</li>
+  </ul>
+
+  <h3 class="font-bold text-lg mb-2">3. BASE LEGAL</h3>
+  <p class="mb-4">As funcionalidades de assembleia e votação eletrônica são oferecidas em conformidade com o <strong>art. 1.354-A do Código Civil Brasileiro</strong>.</p>
+
+  <h3 class="font-bold text-lg mb-2">4. CADASTRO E RESPONSABILIDADES</h3>
+  <p class="mb-4">O Usuário compromete-se a fornecer informações verídicas e manter a confidencialidade de suas credenciais.</p>
+`;
+
+const PRIVACY_CONTENT = `
+  <h3 class="font-bold text-lg mb-2">1. DADOS COLETADOS</h3>
+  <p>A plataforma pode coletar os seguintes dados pessoais:</p>
+  <ul class="list-disc pl-5 space-y-1 mb-4">
+    <li>Dados cadastrais: Nome, E-mail, Telefone, Unidade.</li>
+    <li>Dados de autenticação: Login, IP, Logs de ações.</li>
+  </ul>
+  
+  <h3 class="font-bold text-lg mb-2">2. FINALIDADE</h3>
+  <p class="mb-4">Os dados são tratados para permitir acesso seguro, viabilizar votações, gerar atas e cumprir obrigações legais.</p>
+
+  <h3 class="font-bold text-lg mb-2">3. COMPARTILHAMENTO</h3>
+  <p class="mb-4">Os dados podem ser compartilhados com a instituição contratante e fornecedores de tecnologia. Não vendemos dados.</p>
+
+  <h3 class="font-bold text-lg mb-2">4. SEGURANÇA</h3>
+  <p class="mb-4">Adotamos criptografia e controle de acesso para proteger seus dados.</p>
+`;
+
+// --- MODAL COMPONENT ---
+const LegalModal: React.FC<{ title: string; content: string; onClose: () => void }> = ({ title, content, onClose }) => (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="bg-white w-full max-w-2xl max-h-[80vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 className="font-bold text-xl text-slate-800 flex items-center gap-2">
+                    <ShieldCheck className="text-emerald-500" /> {title}
+                </h3>
+                <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors text-2xl font-light">&times;</button>
+            </div>
+            <div className="p-8 overflow-y-auto prose prose-slate max-w-none text-sm text-slate-600 leading-relaxed">
+                <div dangerouslySetInnerHTML={{ __html: content }} />
+            </div>
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+                <button onClick={onClose} className="bg-emerald-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-emerald-700 transition-colors">
+                    Entendi e Concordo
+                </button>
+            </div>
+        </div>
+    </div>
+);
+
 const Auth: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -30,7 +96,11 @@ const Auth: React.FC = () => {
   // Login States
   const [loginInput, setLoginInput] = useState(''); 
   const [password, setPassword] = useState('');
-  const [keepLogged, setKeepLogged] = useState(false); // NOVO: Manter conectado
+  const [keepLogged, setKeepLogged] = useState(false); 
+
+  // Password Visibility States
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // 2FA STATE
   const [show2FAInput, setShow2FAInput] = useState(false);
@@ -49,11 +119,15 @@ const Auth: React.FC = () => {
   const [whatsapp, setWhatsapp] = useState('');
   const [condoIdentifier, setCondoIdentifier] = useState('');
   const [secretKeyword, setSecretKeyword] = useState('');
-  const [acceptedTerms, setAcceptedTerms] = useState(false); // NOVO: Termos de uso
+  const [acceptedTerms, setAcceptedTerms] = useState(false); 
 
   // Multi-Unidades
   const [hasMultipleUnits, setHasMultipleUnits] = useState(false);
   const [unitsList, setUnitsList] = useState([{ bloco: '', unidade: '' }]);
+
+  // --- MODAL STATES ---
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
   useEffect(() => {
     if (location.state?.isRegister) {
@@ -111,7 +185,7 @@ const Auth: React.FC = () => {
             password,
             selectedProfileId: profileId,
             deviceId: getDeviceId(),
-            keepLogged: keepLogged // NOVO: Envia flag para o backend
+            keepLogged: keepLogged 
         };
 
         if (show2FAInput && code2FA) {
@@ -128,6 +202,8 @@ const Auth: React.FC = () => {
             return;
         }
 
+        // --- LÓGICA DO LEQUE ---
+        // Se o backend retornar multipleProfiles, mostramos o seletor
         if (data.multipleProfiles && !profileId) {
             setAvailableProfiles(data.profiles || []);
             setShowProfileSelector(true);
@@ -156,7 +232,6 @@ const Auth: React.FC = () => {
     if (isLogin) {
         await executeLogin();
     } else {
-        // Validação extra para garantir que os termos foram aceitos
         if (!acceptedTerms) {
             setError('Você precisa aceitar os termos de uso.');
             return;
@@ -215,8 +290,8 @@ const Auth: React.FC = () => {
               <div className="bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md border border-slate-700 p-8 animate-in zoom-in-95 duration-300">
                 <div className="text-center mb-6">
                     <Logo theme="dark" size="lg" />
-                    <h2 className="text-white font-bold text-xl mt-4">Escolha uma conta</h2>
-                    <p className="text-slate-400 text-sm">Identificamos múltiplos perfis para suas credenciais.</p>
+                    <h2 className="text-white font-bold text-xl mt-4">Bem-vindo(a)!</h2>
+                    <p className="text-slate-400 text-sm mt-1">Como você deseja acessar hoje?</p>
                 </div>
                 
                 <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1 custom-scrollbar">
@@ -227,16 +302,19 @@ const Auth: React.FC = () => {
                             className="w-full bg-slate-700 hover:bg-slate-600 border border-slate-600 p-4 rounded-xl flex items-center justify-between group transition-all"
                         >
                             <div className="text-left">
-                                <h3 className="font-bold text-white group-hover:text-emerald-400 transition-colors">
-                                    {profile.contextName || 'Conta Global'}
+                                <h3 className="font-bold text-white group-hover:text-emerald-400 transition-colors flex items-center gap-2">
+                                    {profile.role === 'AFILIADO' ? <TrendingUp size={16}/> : <Building size={16}/>}
+                                    {profile.contextName || 'Perfil Global'}
                                 </h3>
-                                <div className="flex items-center gap-2 mt-1">
+                                
+                                <div className="flex items-center gap-2 mt-2">
                                     <span className={`text-[10px] uppercase font-bold tracking-wide px-2 py-1 rounded ${
                                         profile.role === 'ADMIN' ? 'bg-red-500/20 text-red-400' :
                                         profile.role === 'SINDICO' ? 'bg-purple-500/20 text-purple-400' :
-                                        'bg-slate-900 text-slate-300'
+                                        profile.role === 'AFILIADO' ? 'bg-blue-500/20 text-blue-400' :
+                                        'bg-emerald-500/20 text-emerald-400'
                                     }`}>
-                                        {profile.role === 'ADM_CONDO' ? 'ADMIN' : profile.role}
+                                        {profile.role === 'ADM_CONDO' ? 'ADMIN CONDO' : profile.role}
                                     </span>
                                     <span className="text-xs text-slate-400">{profile.userName}</span>
                                 </div>
@@ -267,6 +345,10 @@ const Auth: React.FC = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4 relative overflow-hidden">
       
+      {/* --- MODAIS RENDERIZADOS AQUI --- */}
+      {showTermsModal && <LegalModal title="Termos de Uso" content={TERMS_CONTENT} onClose={() => setShowTermsModal(false)} />}
+      {showPrivacyModal && <LegalModal title="Política de Privacidade" content={PRIVACY_CONTENT} onClose={() => setShowPrivacyModal(false)} />}
+
       {isAffiliateContext && (
         <div className="absolute top-0 right-0 p-10 opacity-5 pointer-events-none">
             <TrendingUp className="w-96 h-96 text-emerald-500" />
@@ -408,10 +490,23 @@ const Auth: React.FC = () => {
                             </div>
                             <div className="relative">
                                 <Lock className="absolute left-3 top-3 h-5 w-5 text-slate-500" />
-                                <input type="password" placeholder="Sua Senha" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-slate-900 text-white pl-10 p-3 border border-slate-700 rounded-lg focus:border-emerald-500 outline-none transition-all" required />
+                                <input 
+                                    type={showPassword ? "text" : "password"} 
+                                    placeholder="Sua Senha" 
+                                    value={password} 
+                                    onChange={e => setPassword(e.target.value)} 
+                                    className="w-full bg-slate-900 text-white pl-10 p-3 pr-10 border border-slate-700 rounded-lg focus:border-emerald-500 outline-none transition-all" 
+                                    required 
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-3 text-slate-500 hover:text-slate-300 focus:outline-none"
+                                >
+                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
                             </div>
                             
-                            {/* NOVO: CHECKBOX MANTER CONECTADO */}
                             <div className="flex items-center gap-2">
                                 <input 
                                     type="checkbox" 
@@ -473,35 +568,48 @@ const Auth: React.FC = () => {
 
             {!isLogin && (
               <>
-                {/* NOVO: CAMPO DE SENHA ADICIONADO AQUI */}
                 <div className="relative animate-in slide-in-from-top-1">
                     <Lock className="absolute left-3 top-3 h-5 w-5 text-slate-500" />
                     <input 
-                    type="password" 
+                    type={showPassword ? "text" : "password"} 
                     placeholder="Sua Senha" 
                     value={password} 
                     onChange={e => setPassword(e.target.value)} 
-                    className="w-full bg-slate-900 text-white pl-10 p-3 border border-slate-700 rounded-lg focus:border-emerald-500 outline-none transition-all"
+                    className="w-full bg-slate-900 text-white pl-10 p-3 pr-10 border border-slate-700 rounded-lg focus:border-emerald-500 outline-none transition-all"
                     required 
                     />
+                    <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-3 text-slate-500 hover:text-slate-300 focus:outline-none"
+                    >
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
                 </div>
 
                 <div className="relative animate-in slide-in-from-top-1">
                     <CheckCircle className="absolute left-3 top-3 h-5 w-5 text-slate-500" />
                     <input 
-                    type="password" 
+                    type={showConfirmPassword ? "text" : "password"} 
                     placeholder="Confirmar Senha" 
                     value={confirmPassword} 
                     onChange={e => setConfirmPassword(e.target.value)} 
-                    className={`w-full bg-slate-900 text-white pl-10 p-3 border rounded-lg outline-none transition-all ${password && confirmPassword && password !== confirmPassword ? 'border-red-500 focus:border-red-500' : 'border-slate-700 focus:border-emerald-500'}`}
+                    className={`w-full bg-slate-900 text-white pl-10 p-3 pr-10 border rounded-lg outline-none transition-all ${password && confirmPassword && password !== confirmPassword ? 'border-red-500 focus:border-red-500' : 'border-slate-700 focus:border-emerald-500'}`}
                     required 
                     />
+                    <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 top-3 text-slate-500 hover:text-slate-300 focus:outline-none"
+                    >
+                        {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
                     {password && confirmPassword && password !== confirmPassword && (
-                    <span className="text-xs text-red-400 absolute right-3 top-4 font-bold">Não coincidem</span>
+                    <span className="text-xs text-red-400 absolute right-3 -bottom-5 font-bold">Não coincidem</span>
                     )}
                 </div>
 
-                <div className="bg-emerald-900/20 p-4 rounded-lg border border-emerald-500/30 mt-4">
+                <div className="bg-emerald-900/20 p-4 rounded-lg border border-emerald-500/30 mt-6">
                     <label className="text-xs font-bold text-emerald-400 uppercase flex items-center gap-1 mb-2">
                       <ShieldCheck size={14}/> Palavra-Chave do Condomínio
                     </label>
@@ -510,7 +618,7 @@ const Auth: React.FC = () => {
               </>
             )}
 
-            {/* NOVO: TERMOS DE USO */}
+            {/* --- UPDATED: TERMS AND PRIVACY LINKS --- */}
             {!isLogin && (
                 <div className="flex items-start gap-2 mt-4">
                     <input 
@@ -521,14 +629,16 @@ const Auth: React.FC = () => {
                         className="w-4 h-4 mt-1 rounded border-slate-500 bg-slate-800 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
                     />
                     <label htmlFor="terms" className="text-xs text-slate-400 cursor-pointer">
-                        Li e aceito os <Link to="/terms" className="text-emerald-400 hover:underline">Termos de Uso</Link> e a <Link to="/privacy" className="text-emerald-400 hover:underline">Política de Privacidade</Link>.
+                        Li e aceito os 
+                        <button type="button" onClick={() => setShowTermsModal(true)} className="text-emerald-400 hover:underline mx-1 font-bold">Termos de Uso</button> 
+                        e a 
+                        <button type="button" onClick={() => setShowPrivacyModal(true)} className="text-emerald-400 hover:underline mx-1 font-bold">Política de Privacidade</button>.
                     </label>
                 </div>
             )}
 
             <button 
               type="submit" 
-              // Bloqueia se for cadastro E termos não aceitos
               disabled={loading || (!isLogin && !acceptedTerms)} 
               className={`w-full font-bold py-3 rounded-lg transition-all shadow-lg flex items-center justify-center gap-2 mt-6 ${
                   loading || (!isLogin && !acceptedTerms)

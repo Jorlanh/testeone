@@ -214,7 +214,7 @@ const Compliance: React.FC = () => {
                </div>
                <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
                   <h4 className="font-bold text-emerald-400 mb-2">Como garantem que sou eu?</h4>
-                  <p className="text-sm text-slate-300">Utilizamos autenticação segura via e-mail e senha. Para maior segurança, o administrador pode exigir validação de dois fatores (2FA) via SMS ou token.</p>
+                  <p className="text-sm text-slate-300">Utilizamos autenticação segura via e-mail e senha. Para maior segurança, o administrador pode exigir validação de dois fatores (2FA) via Google Authenticator.</p>
                </div>
             </div>
             

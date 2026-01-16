@@ -6,8 +6,7 @@ import { useNavigate } from 'react-router-dom';
 interface AuthContextData {
   user: User | null;
   isAuthenticated: boolean;
-  // A função login agora recebe a RESPOSTA do backend, não as credenciais
-  login: (data: LoginResponse) => void; 
+  login: (data: LoginResponse) => void;
   selectContext: (userId: string) => Promise<void>;
   signOut: () => void;
   loading: boolean;
@@ -32,23 +31,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(false);
   }, []);
 
-  // Esta função processa os dados e salva no estado/localStorage
   const processLoginData = (data: LoginResponse) => {
+      // LÓGICA DE UNIFICAÇÃO: Tenta pegar o nome do Tenant/Condomínio da resposta
+      // O backend deve enviar 'tenantName' ou um objeto 'tenant' com 'nome'
+      const tenantData = (data as any).tenant || null;
+      const tenantName = (data as any).tenantName || (tenantData ? tenantData.nome : null);
+
       const userToSave: User = {
         id: data.id || 'temp',
         nome: data.nome || '',
-        name: data.nome || '', 
+        name: data.nome || '',
         email: data.email || '',
         role: data.role as any,
         tenantId: data.tenantId,
         
+        // Salvamos o tenant com o nome correto para o Dashboard usar
+        tenant: tenantData ? { ...tenantData, nome: tenantName } : (tenantName ? { id: data.tenantId!, nome: tenantName } : undefined),
+        
+        // Propriedade auxiliar direta (opcional, facilita leitura)
+        // @ts-ignore
+        tenantName: tenantName,
+
         bloco: data.bloco,
         unidade: data.unidade,
         cpf: data.cpf,
         
         block: data.bloco,
         unit: data.unidade,
-        whatsapp: '' 
+        whatsapp: ''
       };
 
       setUser(userToSave);
@@ -57,20 +67,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       api.defaults.headers.authorization = `Bearer ${data.token}`;
 
+      // Redirecionamento inteligente baseado no papel
       if (data.role === 'ADMIN') navigate('/admin/dashboard');
       else if (data.role === 'AFILIADO') navigate('/affiliate/dashboard');
       else navigate('/dashboard');
   };
 
-  // A função exposta 'login' apenas chama o processador de dados
-  // Não fazemos api.post aqui, pois o Auth.tsx já fez para tratar 2FA/Multi-perfil
   const login = (data: LoginResponse) => {
       processLoginData(data);
   };
 
   const selectContext = async (userId: string) => {
       try {
-          // Chama o endpoint específico ou o login com ID selecionado
           const response = await api.post('/auth/select-context', { userId });
           processLoginData(response.data);
       } catch (error) {

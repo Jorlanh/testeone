@@ -13,6 +13,9 @@ import GovernanceSales from './pages/GovernanceSales';
 import Testimonials from './pages/Testimonials';
 import Blog from './pages/Blog';
 import Compliance from './pages/Compliance';
+import FAQ from './pages/FAQ'; // <--- ADICIONADO
+import TermsOfUse from './pages/TermsOfUse'; // <--- ADICIONADO
+import PrivacyPolicy from './pages/PrivacyPolicy'; // <--- ADICIONADO
 
 // Autenticação e Registro
 import Auth from './pages/Auth';
@@ -60,7 +63,7 @@ const AppRoutes: React.FC = () => {
     const { isAuthenticated } = useAuth(); 
     const clientRef = useRef<Client | null>(null);
 
-    // LÓGICA DO WEBSOCKET (SEM LOGS)
+    // LÓGICA DO WEBSOCKET
     useEffect(() => {
         const token = localStorage.getItem('@Votzz:token');
         
@@ -86,7 +89,6 @@ const AppRoutes: React.FC = () => {
             reconnectDelay: 5000,
             heartbeatIncoming: 4000,
             heartbeatOutgoing: 4000,
-            // Logs removidos para limpar o console
             onConnect: () => {}, 
             onStompError: () => {},
             debug: () => {} 
@@ -107,8 +109,16 @@ const AppRoutes: React.FC = () => {
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/governance-sales" element={<GovernanceSales user={null} />} />
           <Route path="/testimonials" element={<Testimonials />} />
+          
+          {/* Blog e Artigos */}
           <Route path="/blog" element={<Blog />} />
+          <Route path="/blog/:slug" element={<Blog />} /> {/* <--- ROTA PARA ARTIGO ESPECÍFICO */}
+          
+          {/* Páginas Institucionais/Legais */}
           <Route path="/compliance" element={<Compliance />} />
+          <Route path="/faq" element={<FAQ />} />               {/* <--- ROTA ADICIONADA */}
+          <Route path="/terms" element={<TermsOfUse />} />      {/* <--- ROTA ADICIONADA */}
+          <Route path="/privacy" element={<PrivacyPolicy />} /> {/* <--- ROTA ADICIONADA */}
           
           {/* --- AUTENTICAÇÃO --- */}
           <Route path="/login" element={<Auth />} />

@@ -153,7 +153,6 @@ function AdminsList({ currentUser }: { currentUser: any }) {
         <div className="space-y-4">
             <h3 className="font-black text-slate-700 ml-2 text-xl">Administradores do Sistema</h3>
             
-            {/* MODAL DE EDIÇÃO */}
             {editingAdmin && (
                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                     <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl max-w-lg w-full">
@@ -210,12 +209,11 @@ function AdminsList({ currentUser }: { currentUser: any }) {
     );
 }
 
-// 3. TENANTS MANAGER (CORRIGIDO PARA APENAS TRIMESTRAL E ANUAL)
+// 3. TENANTS MANAGER
 function TenantsManager() {
     const [tenants, setTenants] = useState<any[]>([]);
     const [editingTenant, setEditingTenant] = useState<any>(null);
     
-    // FIX 1: Inicialização correta com ANUAL como padrão
     const [editForm, setEditForm] = useState({
         nome: '', cnpj: '', cep: '', logradouro: '', numero: '', bairro: '', cidade: '', estado: '', secretKeyword: '',
         planoNome: 'ESSENCIAL', periodicidade: 'ANUAL', dataExpiracaoPlano: '', ativo: true
@@ -227,9 +225,8 @@ function TenantsManager() {
     useEffect(() => {
         if (editingTenant) {
             let planoNome = 'ESSENCIAL';
-            let periodicidade = 'ANUAL'; // Fallback padrão
+            let periodicidade = 'ANUAL';
             
-            // Lógica para extrair plano e periodicidade
             const rawPlano = typeof editingTenant.plano === 'string' ? editingTenant.plano : (editingTenant.plano?.nome || '');
 
             if (rawPlano) {
@@ -239,7 +236,6 @@ function TenantsManager() {
                 else if (upper.includes('CUSTOM')) planoNome = 'CUSTOM';
                 else if (upper.includes('GRATUITO')) planoNome = 'GRATUITO';
 
-                // Apenas Trimestral e Anual suportados
                 if (upper.includes('TRIMESTRAL')) periodicidade = 'TRIMESTRAL';
                 else if (upper.includes('ANUAL')) periodicidade = 'ANUAL';
             }
@@ -539,6 +535,7 @@ function OrganizedUsersView() {
   const handleCreateUser = async (e: React.FormEvent) => {
       e.preventDefault();
       try {
+          if (!newUser.tenantId) { alert("Selecione um condomínio!"); return; }
           await api.post('/admin/create-user-linked', newUser);
           alert("Usuário criado com sucesso!"); setIsCreatingUser(false); loadData();
           setNewUser({ tenantId: '', nome: '', email: '', password: 'votzz', role: 'MORADOR', cpf: '', whatsapp: '', unidade: '', bloco: '' });
@@ -557,7 +554,7 @@ function OrganizedUsersView() {
             cpf: editingUser.cpf,
             whatsapp: editingUser.whatsapp,
             role: editingUser.role,
-            tenantId: editingUser.tenantId // <--- Envia o ID do condomínio selecionado
+            tenantId: editingUser.tenantId 
         };
         if(editingUser.newPassword) payload.newPassword = editingUser.newPassword;
 
