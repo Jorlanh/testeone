@@ -97,6 +97,9 @@ const Auth: React.FC = () => {
   const [loginInput, setLoginInput] = useState(''); 
   const [password, setPassword] = useState('');
   const [keepLogged, setKeepLogged] = useState(false); 
+  
+  // FIX: Estado para guardar o ID do perfil caso o 2FA seja solicitado após o "Leque"
+  const [selectedProfileId, setSelectedProfileId] = useState<string>('');
 
   // Password Visibility States
   const [showPassword, setShowPassword] = useState(false);
@@ -140,6 +143,7 @@ const Auth: React.FC = () => {
     setShow2FAInput(false);
     setCode2FA('');
     setTrustDevice(false);
+    setSelectedProfileId(''); // Limpa seleção ao trocar modo
     if (isLogin) {
       if (isAffiliateContext) {
         navigate('/affiliate/register');
@@ -176,35 +180,48 @@ const Auth: React.FC = () => {
     return allowedDomains.includes(domain);
   };
 
-  const executeLogin = async (profileId?: string) => {
+  const executeLogin = async (profileIdParam?: string) => {
     setLoading(true);
     setError('');
+    
+    // FIX: Usa o profileId passado (clique) ou o estado salvo (fluxo 2FA)
+    const effectiveProfileId = profileIdParam || selectedProfileId;
+
     try {
         const payload: any = { 
             login: loginInput, 
             password,
-            selectedProfileId: profileId,
+            selectedProfileId: effectiveProfileId,
             deviceId: getDeviceId(),
             keepLogged: keepLogged 
         };
 
         if (show2FAInput && code2FA) {
-            payload.code2fa = parseInt(code2FA);
+            // Garante que é número e remove espaços
+            payload.code2fa = parseInt(code2FA.replace(/\D/g, ''));
             payload.trustDevice = trustDevice;
         }
 
         const response = await api.post('/auth/login', payload);
         const data = response.data;
 
+        // Se o backend pedir 2FA
         if (data.requiresTwoFactor) {
             setShow2FAInput(true);
             setLoading(false);
+            
+            // Se o usuário tinha clicado num perfil específico, salvamos esse ID
+            // para reenviar quando ele digitar o código
+            if (profileIdParam) {
+                setSelectedProfileId(profileIdParam);
+                setShowProfileSelector(false); // Fecha o leque para mostrar o input de código
+            }
             return;
         }
 
         // --- LÓGICA DO LEQUE ---
-        // Se o backend retornar multipleProfiles, mostramos o seletor
-        if (data.multipleProfiles && !profileId) {
+        // Se o backend retornar multipleProfiles e ainda não selecionamos um
+        if (data.multipleProfiles && !effectiveProfileId) {
             setAvailableProfiles(data.profiles || []);
             setShowProfileSelector(true);
             setLoading(false);
@@ -221,7 +238,12 @@ const Auth: React.FC = () => {
     } catch (err: any) {
         console.error(err);
         const msg = err.response?.data?.message || err.response?.data || err.message || 'Erro na operação.';
-        setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+        
+        if (show2FAInput) {
+             setError("Código incorreto ou expirado.");
+        } else {
+             setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+        }
         setLoading(false);
     }
   };
@@ -230,6 +252,7 @@ const Auth: React.FC = () => {
     e.preventDefault();
     
     if (isLogin) {
+        // Chama executeLogin. Se estivermos na tela de 2FA, ele usará o selectedProfileId do state
         await executeLogin();
     } else {
         if (!acceptedTerms) {
@@ -372,7 +395,9 @@ const Auth: React.FC = () => {
               !isLogin && <span className="text-slate-500 text-sm block mb-1">Cadastro de Morador</span>
             )}
             <p className="text-slate-400 text-sm">
-              {isLogin ? 'Bem-vindo de volta! Acesse sua conta.' : 'Preencha os dados para solicitar acesso.'}
+              {isLogin 
+                ? (show2FAInput ? 'Verificação de Segurança' : 'Bem-vindo de volta! Acesse sua conta.') 
+                : 'Preencha os dados para solicitar acesso.'}
             </p>
           </div>
         </div>
@@ -552,7 +577,7 @@ const Auth: React.FC = () => {
                                     Não pedir código por 30 dias neste navegador
                                 </label>
                             </div>
-                            <button type="button" onClick={() => setShow2FAInput(false)} className="text-xs text-slate-500 hover:text-white mt-2 underline w-full text-center">Cancelar e voltar</button>
+                            <button type="button" onClick={() => { setShow2FAInput(false); setCode2FA(''); }} className="text-xs text-slate-500 hover:text-white mt-2 underline w-full text-center">Cancelar e voltar</button>
                         </div>
                     )}
                 </div>

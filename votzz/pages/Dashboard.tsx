@@ -11,7 +11,7 @@ import { Assembly, User } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { SubscriptionStatus } from '../components/SubscriptionStatus';
 
-// ... (Interfaces AuditLog, FinancialReport, etc. remain the same) ...
+// Interfaces preservadas
 interface AuditLog {
   id: string;
   action: string;
@@ -99,18 +99,21 @@ const Dashboard: React.FC = () => {
 
   const loadData = async () => {
     try {
-        const promises = [
+        // Rotas base que todos os perfis acessam
+        const promises: Promise<any>[] = [
           api.get('/assemblies'),             
           api.get('/financial/balance'),      
-          api.get('/users'),                 
-          api.get('/tenants/audit-logs'),     
           api.get('/financial/reports'),      
-          api.get('/tenants/bank-info'),
           api.get('/condo/dashboard/stats').catch(() => ({ data: null }))
         ];
 
+        // CORREÇÃO: Somente dispara as rotas de gestão se o usuário for gestor.
+        // O .catch(() => ({ data: ... })) agora é tipado como 'any' para não dar erro no VS Code.
         if (isManager) {
-             promises.push(api.get('/tenants/my-subscription').catch(() => ({ data: null })));
+            promises.push(api.get('/users').catch((e: any) => ({ data: [] })));
+            promises.push(api.get('/tenants/audit-logs').catch((e: any) => ({ data: [] })));
+            promises.push(api.get('/tenants/bank-info').catch((e: any) => ({ data: null })));
+            promises.push(api.get('/tenants/my-subscription').catch((e: any) => ({ data: null })));
         }
 
         const results = await Promise.allSettled(promises);
@@ -120,18 +123,20 @@ const Dashboard: React.FC = () => {
             setAssemblies(data);
         }
         if (results[1].status === 'fulfilled') setFinancial(results[1].value.data || { balance: 0, lastUpdate: 'N/A' });
-        if (results[2].status === 'fulfilled') setCondoUsers(Array.isArray(results[2].value.data) ? results[2].value.data : []);
+        if (results[2].status === 'fulfilled') setReports(results[2].value.data || []);
         
-        if (results[3].status === 'fulfilled') setAuditLogs(results[3].value.data || []);
-        if (results[4].status === 'fulfilled') setReports(results[4].value.data || []);
-        if (results[5].status === 'fulfilled') setBankForm(results[5].value.data || bankForm);
-        
-        if (results[6].status === 'fulfilled' && results[6].value.data) {
-          setRealStats(results[6].value.data);
+        if (results[3].status === 'fulfilled' && results[3].value.data) {
+          setRealStats(results[3].value.data);
         }
 
-        if (results[7] && results[7].status === 'fulfilled' && results[7].value?.data) {
-            setExpirationDate(results[7].value.data.expirationDate);
+        // Processa dados de gestão se for o caso
+        if (isManager) {
+            if (results[4] && results[4].status === 'fulfilled') setCondoUsers(Array.isArray(results[4].value.data) ? results[4].value.data : []);
+            if (results[5] && results[5].status === 'fulfilled') setAuditLogs(results[5].value.data || []);
+            if (results[6] && results[6].status === 'fulfilled') setBankForm(results[6].value.data || bankForm);
+            if (results[7] && results[7].status === 'fulfilled' && results[7].value?.data) {
+                setExpirationDate(results[7].value.data.expirationDate);
+            }
         }
 
     } catch (error) {
@@ -139,7 +144,6 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  // ... (Keep existing useMemo logic: activeAssembliesList, totalVotes, etc.) ...
   const activeAssembliesList = useMemo(() => {
     if (!Array.isArray(assemblies)) return [];
     return assemblies.filter(a => {
@@ -184,7 +188,6 @@ const Dashboard: React.FC = () => {
     return hoursLeft < 48 && hoursLeft > 0;
   });
 
-  // ... (Keep handlers: handleUpdateBalance, handleSaveBankInfo, etc.) ...
   const handleUpdateBalance = () => {
     const val = prompt("Informe o saldo atualizado (R$):", financial.balance.toString());
     if (val && !isNaN(parseFloat(val))) {
@@ -291,12 +294,10 @@ const Dashboard: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Olá, {displayName.split(' ')[0]}</h1>
           
-          {/* --- UPDATED: CONDO NAME DISPLAY --- */}
           <div className="flex items-center gap-2 text-emerald-600 font-bold mt-1">
             <Building size={18} />
             <span>{condoName}</span>
           </div>
-          {/* ----------------------------------- */}
 
           <p className="text-slate-500 flex items-center gap-2 mt-1 text-sm">
             <Calendar className="w-4 h-4" />
@@ -310,9 +311,6 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* ... (Keep the rest of the Dashboard JSX exactly as is: Charts, Cards, Lists, Modals) ... */}
-      
-      {/* (Only the top part changed to show condoName. The rest is unchanged for brevity but included in your file update) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-slate-900 text-white p-8 rounded-3xl shadow-xl border-b-4 border-emerald-500 relative overflow-hidden group">
           <div className="relative z-10">
@@ -375,8 +373,6 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* ... (Existing User List, Charts, Modals code remains unchanged) ... */}
-      
       {showUserList && isManager && (
         <div className="bg-white p-6 rounded-2xl border-2 border-emerald-500 shadow-xl animate-in slide-in-from-top-4 duration-300">
           <div className="flex justify-between items-center mb-6">
@@ -386,7 +382,7 @@ const Dashboard: React.FC = () => {
                 <button onClick={openCreateUser} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-emerald-700"><Plus size={14}/> Adicionar Usuário</button>
             </div>
           </div>
-          <div className="overflow-x-auto max-h-96 overflow-y-auto">
+          <div className="overflow-x-auto max-h-96 overflow-y-auto custom-scrollbar pr-2">
             <table className="w-full text-sm text-left">
               <thead>
                 <tr className="text-slate-400 border-b border-slate-100 uppercase text-[10px]">
@@ -453,7 +449,7 @@ const Dashboard: React.FC = () => {
                 <h3 className="text-sm font-black text-slate-700 uppercase flex items-center gap-2 mb-4">
                     <ShieldAlert size={16} className="text-purple-600"/> Auditoria & Segurança
                 </h3>
-                <div className="bg-slate-50 rounded-xl p-4 max-h-60 overflow-y-auto space-y-3">
+                <div className="bg-slate-50 rounded-xl p-4 max-h-60 overflow-y-auto custom-scrollbar space-y-3 pr-2">
                     {auditLogs.length === 0 ? (
                         <p className="text-xs text-slate-400 text-center italic">Nenhuma atividade registrada.</p>
                     ) : auditLogs.map(log => (
@@ -476,6 +472,20 @@ const Dashboard: React.FC = () => {
              <p className="text-blue-100 text-xs mt-2">Relate problemas técnicos ou de convivência.</p>
            </button>
 
+           <div className="bg-white p-6 rounded-xl border border-slate-100">
+             <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><FileText size={18} className="text-emerald-500"/> Relatórios Recentes</h3>
+             <div className="space-y-3">
+               {reports.slice(0, 3).map(r => (
+                 <div key={r.id} className="flex justify-between items-center text-sm border-b border-slate-50 pb-2 last:border-0">
+                   <span className="text-slate-600 font-medium">{r.month} {r.year}</span>
+                   <a href={r.url} target="_blank" rel="noreferrer" className="text-emerald-600 font-bold text-xs hover:underline uppercase tracking-tight">Ver PDF</a>
+                 </div>
+               ))}
+               {reports.length === 0 && <p className="text-xs text-slate-400 italic">Nenhum disponível.</p>}
+               <button onClick={() => setIsReportModalOpen(true)} className="w-full text-center text-[10px] text-slate-400 font-black uppercase tracking-widest mt-2 hover:text-emerald-600 transition-colors">Ver histórico completo</button>
+             </div>
+           </div>
+
            {criticalAssemblies.length > 0 ? (
              <div className="bg-orange-50 p-5 rounded-xl border border-orange-100">
                <div className="flex items-center gap-2 mb-3">
@@ -493,26 +503,27 @@ const Dashboard: React.FC = () => {
            ) : (
              <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 h-[150px] flex flex-col items-center justify-center text-center">
                 <CheckCircle className="w-8 h-8 text-emerald-200 mb-3" /><h3 className="font-bold text-slate-700">Tudo em dia!</h3>
+                <p className="text-xs text-slate-400 font-medium">Não há pendências críticas.</p>
              </div>
            )}
         </div>
       </div>
 
-      {/* Modals: Report, Bank, User */}
+      {/* --- MODAL RELATÓRIOS --- */}
       {isReportModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-            <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-lg">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-lg animate-in zoom-in-95 duration-200">
                 <div className="flex justify-between mb-6">
-                    <h3 className="font-black text-xl flex items-center gap-2"><FileText className="text-blue-500"/> Relatórios Financeiros</h3>
-                    <button onClick={() => setIsReportModalOpen(false)}><span className="text-2xl">&times;</span></button>
+                    <h3 className="font-black text-xl flex items-center gap-2 text-slate-800"><FileText className="text-blue-500"/> Relatórios Financeiros</h3>
+                    <button onClick={() => setIsReportModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors text-2xl font-light">&times;</button>
                 </div>
                 {isManager && (
-                    <div className="mb-8 p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-300">
-                        <p className="text-sm font-bold text-slate-600 mb-4 text-center">Adicionar Novo Relatório</p>
+                    <div className="mb-8 p-6 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+                        <p className="text-xs font-black text-slate-500 mb-4 text-center uppercase tracking-widest">Adicionar Novo Relatório</p>
                         
                         <div className="flex gap-2 mb-4">
                             <select 
-                                className="flex-1 p-2 border rounded-xl bg-white text-sm"
+                                className="flex-1 p-2.5 border border-slate-200 rounded-xl bg-white text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
                                 value={reportForm.month}
                                 onChange={e => setReportForm({...reportForm, month: e.target.value})}
                             >
@@ -521,7 +532,7 @@ const Dashboard: React.FC = () => {
                                 ))}
                             </select>
                             <select 
-                                className="flex-1 p-2 border rounded-xl bg-white text-sm"
+                                className="flex-1 p-2.5 border border-slate-200 rounded-xl bg-white text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
                                 value={reportForm.year}
                                 onChange={e => setReportForm({...reportForm, year: Number(e.target.value)})}
                             >
@@ -531,34 +542,32 @@ const Dashboard: React.FC = () => {
                             </select>
                         </div>
 
-                        <div className="relative text-center">
+                        <div className="relative text-center group">
                             <input 
                                 type="file" 
                                 accept="application/pdf" 
                                 onChange={handleUploadReport} 
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                             />
-                            <div className="bg-blue-100 text-blue-600 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
-                                <Upload size={18}/> Selecionar PDF
+                            <div className="bg-blue-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 group-hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200">
+                                <Upload size={18}/> Selecionar PDF do Mês
                             </div>
                         </div>
-                        <p className="text-[10px] text-slate-400 mt-2 text-center">Você pode enviar quantos arquivos quiser.</p>
                     </div>
                 )}
                 
-                <div className="space-y-3 max-h-60 overflow-y-auto">
-                    <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Histórico (Últimos 12 meses)</h4>
-                    {reports.length === 0 && <p className="text-sm text-slate-500 italic text-center">Nenhum relatório disponível.</p>}
+                <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                    {reports.length === 0 && <p className="text-sm text-slate-400 italic text-center py-4">Nenhum arquivo encontrado.</p>}
                     {reports.map(r => (
-                        <div key={r.id} className="flex items-center justify-between p-3 border rounded-xl hover:bg-slate-50">
+                        <div key={r.id} className="flex items-center justify-between p-4 border border-slate-100 rounded-2xl hover:bg-slate-50 transition-colors group">
                             <div className="flex items-center gap-3">
-                                <FileCheck className="text-emerald-500" size={20}/>
+                                <div className="bg-emerald-100 p-2 rounded-lg"><FileCheck className="text-emerald-600" size={20}/></div>
                                 <div>
                                     <p className="font-bold text-sm text-slate-700">{r.month} {r.year}</p>
-                                    <p className="text-[10px] text-slate-400">{r.fileName}</p>
+                                    <p className="text-[10px] text-slate-400 font-mono">{r.fileName.substring(0, 20)}...</p>
                                 </div>
                             </div>
-                            <a href={r.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-xs font-bold flex items-center gap-1"><Download size={12}/> Baixar</a>
+                            <a href={r.url} target="_blank" rel="noreferrer" className="bg-slate-100 text-slate-600 p-2 rounded-lg hover:bg-blue-600 hover:text-white transition-all"><Download size={16}/></a>
                         </div>
                     ))}
                 </div>
@@ -566,141 +575,105 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
+      {/* --- MODAL BANCO --- */}
       {isBankModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-             <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-lg">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+             <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-lg animate-in zoom-in-95 duration-200">
                 <div className="flex justify-between mb-6">
-                    <h3 className="font-black text-xl flex items-center gap-2"><Banknote className="text-emerald-500"/> Conta do Condomínio</h3>
-                    <button onClick={() => setIsBankModalOpen(false)}><span className="text-2xl">&times;</span></button>
+                    <h3 className="font-black text-xl flex items-center gap-2 text-slate-800"><Banknote className="text-emerald-500"/> Dados de Recebimento</h3>
+                    <button onClick={() => setIsBankModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-2xl font-light">&times;</button>
                 </div>
-                <p className="text-sm text-slate-500 mb-6">Configure a conta para recebimento de taxas e reservas.</p>
-                <form onSubmit={handleSaveBankInfo} className="space-y-4">
+                <form onSubmit={handleSaveBankInfo} className="space-y-5">
                     <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-xs font-bold text-slate-400 ml-1">Banco</label>
-                            <input className="w-full p-3 border rounded-xl font-bold" value={bankForm.bankName} onChange={e => setBankForm({...bankForm, bankName: e.target.value})} placeholder="Ex: Nubank" />
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Banco Institucional</label>
+                            <input className="w-full p-3 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50" value={bankForm.bankName} onChange={e => setBankForm({...bankForm, bankName: e.target.value})} placeholder="Ex: Itaú, Nubank..." required />
                         </div>
-                        <div>
-                            <label className="text-xs font-bold text-slate-400 ml-1">Chave Pix</label>
-                            <input className="w-full p-3 border rounded-xl font-bold" value={bankForm.pixKey} onChange={e => setBankForm({...bankForm, pixKey: e.target.value})} placeholder="Chave Pix" />
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Chave Pix Oficial</label>
+                            <input className="w-full p-3 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50" value={bankForm.pixKey} onChange={e => setBankForm({...bankForm, pixKey: e.target.value})} placeholder="CPF, E-mail ou Aleatória" required />
                         </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-xs font-bold text-slate-400 ml-1">Agência</label>
-                            <input className="w-full p-3 border rounded-xl font-bold" value={bankForm.agency} onChange={e => setBankForm({...bankForm, agency: e.target.value})} placeholder="0001" />
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Agência</label>
+                            <input className="w-full p-3 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50" value={bankForm.agency} onChange={e => setBankForm({...bankForm, agency: e.target.value})} placeholder="0001" />
                         </div>
-                        <div>
-                            <label className="text-xs font-bold text-slate-400 ml-1">Conta</label>
-                            <input className="w-full p-3 border rounded-xl font-bold" value={bankForm.account} onChange={e => setBankForm({...bankForm, account: e.target.value})} placeholder="12345-6" />
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Conta Corrente</label>
+                            <input className="w-full p-3 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50" value={bankForm.account} onChange={e => setBankForm({...bankForm, account: e.target.value})} placeholder="00000-0" />
                         </div>
                     </div>
-                    <div>
-                        <label className="text-xs font-bold text-slate-400 ml-1">Asaas Wallet ID (Opcional)</label>
-                        <input className="w-full p-3 border rounded-xl font-mono text-sm bg-slate-50" value={bankForm.asaasWalletId} onChange={e => setBankForm({...bankForm, asaasWalletId: e.target.value})} placeholder="wallet_..." />
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Integração Asaas (Wallet ID)</label>
+                        <input className="w-full p-3 border border-slate-200 rounded-xl font-mono text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500" value={bankForm.asaasWalletId} onChange={e => setBankForm({...bankForm, asaasWalletId: e.target.value})} placeholder="wallet_..." />
                     </div>
-                    <button type="submit" className="w-full bg-emerald-600 text-white p-4 rounded-xl font-bold hover:bg-emerald-700">Salvar Dados Bancários</button>
+                    <button type="submit" className="w-full bg-slate-900 text-white p-4 rounded-2xl font-bold hover:bg-slate-800 shadow-xl transition-all">Salvar Configurações</button>
                 </form>
              </div>
         </div>
       )}
 
+      {/* --- MODAL USUÁRIO --- */}
       {isUserModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-             <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-lg">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-lg animate-in zoom-in-95 duration-200">
                 <div className="flex justify-between mb-6">
-                    <h3 className="font-black text-xl text-slate-800">{editingUser ? 'Editar Morador & Senha' : 'Novo Usuário'}</h3>
-                    <button onClick={() => setIsUserModalOpen(false)} className="text-slate-400 hover:text-slate-600"><span className="text-2xl">&times;</span></button>
+                    <h3 className="font-black text-xl text-slate-800">{editingUser ? 'Editar Membro' : 'Novo Membro'}</h3>
+                    <button onClick={() => setIsUserModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors text-2xl font-light">&times;</button>
                 </div>
                 
                 <form onSubmit={handleSaveUser} className="space-y-4">
-                    <div>
-                        <label className="text-xs font-bold text-slate-400 ml-1 uppercase">Nome Completo</label>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Nome do Morador</label>
                         <input 
                             required 
-                            className={`w-full p-3 border rounded-xl font-bold text-slate-700 ${editingUser ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white'}`}
+                            className={`w-full p-3 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 ${editingUser ? 'bg-slate-50' : 'bg-white'}`}
                             placeholder="Nome Completo" 
                             value={userForm.nome} 
                             onChange={e => setUserForm({...userForm, nome: e.target.value})} 
-                            disabled={!!editingUser} 
                         />
                     </div>
-
-                    <div>
-                        <label className="text-xs font-bold text-slate-400 ml-1 uppercase">E-mail</label>
-                        <input 
-                            required 
-                            type="email" 
-                            className="w-full p-3 border rounded-xl bg-white text-slate-700" 
-                            placeholder="exemplo@email.com" 
-                            value={userForm.email} 
-                            onChange={e => setUserForm({...userForm, email: e.target.value})} 
-                        />
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">E-mail de Login</label>
+                        <input required type="email" className="w-full p-3 border border-slate-200 rounded-xl text-slate-700 outline-none focus:ring-2 focus:ring-blue-500" placeholder="exemplo@email.com" value={userForm.email} onChange={e => setUserForm({...userForm, email: e.target.value})} />
                     </div>
-
                     <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-xs font-bold text-slate-400 ml-1 uppercase">CPF</label>
-                            <input 
-                                className={`w-full p-3 border rounded-xl ${editingUser ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white'}`} 
-                                placeholder="000.000.000-00" 
-                                value={userForm.cpf} 
-                                onChange={e => setUserForm({...userForm, cpf: e.target.value})} 
-                                disabled={!!editingUser} 
-                            />
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Nº Unidade</label>
+                            <input className="w-full p-3 border border-slate-200 rounded-xl text-slate-700 outline-none" value={userForm.unidade} onChange={e => setUserForm({...userForm, unidade: e.target.value})} />
                         </div>
-                        <div>
-                            <label className="text-xs font-bold text-slate-400 ml-1 uppercase">WhatsApp</label>
-                            <input 
-                                className="w-full p-3 border rounded-xl bg-white text-slate-700" 
-                                placeholder="(00) 00000-0000" 
-                                value={userForm.whatsapp} 
-                                onChange={e => setUserForm({...userForm, whatsapp: e.target.value})} 
-                            />
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Bloco/Torre</label>
+                            <input className="w-full p-3 border border-slate-200 rounded-xl text-slate-700 outline-none" value={userForm.bloco} onChange={e => setUserForm({...userForm, bloco: e.target.value})} />
                         </div>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-xs font-bold text-slate-400 ml-1 uppercase">Unidade</label>
-                            <input className="w-full p-3 border rounded-xl bg-white text-slate-700" placeholder="Ex: 101" value={userForm.unidade} onChange={e => setUserForm({...userForm, unidade: e.target.value})} />
-                        </div>
-                        <div>
-                            <label className="text-xs font-bold text-slate-400 ml-1 uppercase">Bloco</label>
-                            <input className="w-full p-3 border rounded-xl bg-white text-slate-700" placeholder="Ex: A" value={userForm.bloco} onChange={e => setUserForm({...userForm, bloco: e.target.value})} />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="text-xs font-bold text-slate-400 ml-1 uppercase">Cargo / Permissão</label>
-                        <select className="w-full p-3 border rounded-xl bg-white text-slate-700 font-medium" value={userForm.role} onChange={e => setUserForm({...userForm, role: e.target.value})}>
-                            <option value="MORADOR">Morador (Padrão)</option>
-                            <option value="SINDICO">Síndico (Gestor)</option>
-                            <option value="ADM_CONDO">Administrador (Staff)</option>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Nível de Acesso</label>
+                        <select className="w-full p-3 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none bg-white" value={userForm.role} onChange={e => setUserForm({...userForm, role: e.target.value})}>
+                            <option value="MORADOR">MORADOR (Somente Voto)</option>
+                            <option value="SINDICO">SÍNDICO (Gestor Geral)</option>
+                            <option value="ADM_CONDO">ADMIN CONDO (Gestor Auxiliar)</option>
                         </select>
                     </div>
-
                     <div className="pt-2 border-t border-slate-100 mt-2">
-                        <label className="text-xs font-black text-blue-600 ml-1 uppercase flex items-center gap-1">
-                            <Shield size={12}/> {editingUser ? 'Redefinir Senha' : 'Senha Inicial'}
-                        </label>
-                        <input 
-                            type="password" 
-                            required={!editingUser} 
-                            className={`w-full p-3 border rounded-xl transition-all ${editingUser ? 'border-blue-200 focus:ring-2 focus:ring-blue-500 bg-blue-50/50' : 'bg-white'}`}
-                            placeholder={editingUser ? "Deixe em branco para manter a atual" : "Crie uma senha forte"} 
-                            value={userForm.password} 
-                            onChange={e => setUserForm({...userForm, password: e.target.value})} 
-                        />
+                        <label className="text-[10px] font-black text-blue-600 uppercase ml-1 flex items-center gap-1"><Shield size={12}/> Redefinir Senha</label>
+                        <input type="password" placeholder="Nova senha (opcional)" className="w-full p-3 border border-blue-100 rounded-xl bg-blue-50/30 text-slate-700 outline-none focus:ring-2 focus:ring-blue-500" value={userForm.password} onChange={e => setUserForm({...userForm, password: e.target.value})} />
                     </div>
-
-                    <button type="submit" className="w-full bg-blue-600 text-white p-4 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all mt-4">
-                        {editingUser ? 'Salvar Alterações' : 'Criar Usuário'}
-                    </button>
+                    <div className="pt-4">
+                        <button type="submit" className="w-full bg-blue-600 text-white p-4 rounded-2xl font-bold hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all">Confirmar e Gravar</button>
+                    </div>
                 </form>
-             </div>
+            </div>
         </div>
       )}
+
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+      `}</style>
 
     </div>
   );
