@@ -9,7 +9,7 @@ import { useAuth } from '../context/AuthContext';
 
 // StarIcon Component (local definition)
 const StarIconComp = ({ className }: { className?: string }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" viewBox="0 0 24 24" fill="currentColor" className={className}>
         <path fillRule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.007 5.404.433c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.433 2.082-5.006z" clipRule="evenodd" />
     </svg>
 );
@@ -30,15 +30,20 @@ const Governance: React.FC = () => {
   const [subTab, setSubTab] = useState<'active' | 'archived'>('active'); 
   const [loading, setLoading] = useState(true);
 
-  // --- LÓGICA DE MULTI-UNIDADES ---
-  // Carrega as unidades do morador do contexto de autenticação
-  const userUnits = (user as any)?.unidadesList || (user?.unidade ? [user.unidade] : []);
-  const myUnitCount = userUnits.length;
-
-  // Estados para o Modal de Seleção de Unidades
+  // --- LÓGICA DE MULTI-UNIDADES (CORRIGIDA) ---
+  const [userUnits, setUserUnits] = useState<string[]>([]);
   const [showUnitModal, setShowUnitModal] = useState(false);
-  const [tempSelectedUnits, setTempSelectedUnits] = useState<string[]>(userUnits);
+  const [tempSelectedUnits, setTempSelectedUnits] = useState<string[]>([]);
   const [pendingPollVote, setPendingPollVote] = useState<{pollId: string, optionId: string} | null>(null);
+
+  // CORREÇÃO F5: Sincroniza estado quando user carrega
+  useEffect(() => {
+    if (user) {
+        const units = (user as any)?.unidadesList || (user?.unidade ? [user.unidade] : []);
+        setUserUnits(units);
+        setTempSelectedUnits(units);
+    }
+  }, [user]);
 
   const canManage = ['SINDICO', 'MANAGER', 'ADM_CONDO'].includes(user?.role || '');
 
@@ -105,8 +110,11 @@ const Governance: React.FC = () => {
       if (!option) return;
 
       // Se tiver mais de uma unidade, abre o modal para ele escolher por quais quer votar
-      if (myUnitCount > 1) {
-          setTempSelectedUnits(userUnits); // Reset para todas selecionadas por default
+      // Usa o estado atualizado 'userUnits'
+      if (userUnits.length > 1) {
+          // Garante seleção padrão caso esteja vazio
+          if (tempSelectedUnits.length === 0) setTempSelectedUnits(userUnits);
+
           setPendingPollVote({ pollId, optionId: option.id });
           setShowUnitModal(true);
       } else {
@@ -432,9 +440,9 @@ const Governance: React.FC = () => {
                                         {poll.status === 'OPEN' ? 'ABERTA' : 'ENCERRADA'}
                                     </span>
                                     {/* BADGE DE PESO MULTI-UNIDADE */}
-                                    {myUnitCount > 1 && !poll.userHasVoted && poll.status === 'OPEN' && (
+                                    {userUnits.length > 1 && !poll.userHasVoted && poll.status === 'OPEN' && (
                                         <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1">
-                                            <Layers size={10}/> {myUnitCount}x Voto
+                                            <Layers size={10}/> {userUnits.length}x Voto
                                         </span>
                                     )}
                                 </div>

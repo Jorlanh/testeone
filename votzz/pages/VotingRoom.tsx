@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  ArrowLeft, MessageSquare, FileCheck, Shield, Video, Sparkles, Send, Lock, Clock, FileText, CheckCircle, Gavel, Scale, Download, Eye, EyeOff, Layers, X
+  ArrowLeft, MessageSquare, FileCheck, Shield, Video, Send, Lock, Clock, FileText, CheckCircle, Gavel, Scale, Download, Eye, EyeOff, Layers, X
 } from 'lucide-react';
 import api from '../services/api'; 
 import { useAuth } from '../context/AuthContext';
@@ -23,14 +23,13 @@ const VotingRoom: React.FC = () => {
   const [messages, setMessages] = useState<any[]>([]);
   
   // --- NOVA LÓGICA: MULTI-UNIDADES ---
-  // Carrega as unidades do morador. Se o backend enviar uma lista, usamos ela, senão usamos a unidade padrão.
-  const userUnits = (user as any)?.unidadesList || [user?.unidade].filter(Boolean) || ['N/A'];
-  const [myUnits, setMyUnits] = useState<string[]>(userUnits);
-  const [totalWeight, setTotalWeight] = useState(userUnits.length); 
+  // Inicializa com array vazio para evitar undefined no primeiro render
+  const [myUnits, setMyUnits] = useState<string[]>([]);
+  const [totalWeight, setTotalWeight] = useState(1); 
 
   // Estados de Controle do Modal de Unidades
   const [showUnitModal, setShowUnitModal] = useState(false);
-  const [tempSelectedUnits, setTempSelectedUnits] = useState<string[]>(userUnits);
+  const [tempSelectedUnits, setTempSelectedUnits] = useState<string[]>([]);
 
   // Estados de UI
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
@@ -39,7 +38,7 @@ const VotingRoom: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'VOTE' | 'MANAGE'>('VOTE');
   const [closing, setClosing] = useState(false);
   
-  // CORREÇÃO TS: Estado que estava faltando
+  // Estado que estava faltando
   const [summarizing, setSummarizing] = useState(false); 
   
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -61,7 +60,53 @@ const VotingRoom: React.FC = () => {
   // Fração Total do Usuário (considerando suas múltiplas unidades)
   const myTotalFraction = userFraction * totalWeight;
 
-  // --- LÓGICA DE CÁLCULO DA ATA (CORRIGIDA) ---
+  // --- CORREÇÃO F5: Sincroniza Unidades e Voto quando o User carregar ---
+  useEffect(() => {
+    if (user) {
+        // Tenta pegar a lista vinda do login (backend AuthDTOs atualizado)
+        // Se não tiver lista, pega a unidade única do cadastro. Se nada, array vazio.
+        const unitsFromUser = (user as any)?.unidadesList || [user?.unidade].filter(Boolean);
+        
+        console.log("DEBUG: Unidades do usuário carregadas:", unitsFromUser);
+
+        if (unitsFromUser && unitsFromUser.length > 0) {
+            setMyUnits(unitsFromUser);
+            setTotalWeight(unitsFromUser.length);
+            // Pré-seleciona todas por padrão para facilitar o UX
+            setTempSelectedUnits(unitsFromUser); 
+        } else {
+            // Fallback visual
+            setMyUnits(['Unidade Padrão']);
+        }
+
+        // Se a assembleia já carregou, verifica se esse usuário JÁ votou
+        if (assembly && assembly.votes) {
+            checkIfVoted(assembly.votes);
+        }
+    }
+  }, [user, assembly]); // Executa quando user OU assembly mudarem
+
+  // Função auxiliar para verificar se o usuário já votou
+  const checkIfVoted = (votes: any[]) => {
+      if (!votes || !user) return;
+      
+      // O backend pode retornar o user aninhado (v.user.id) ou flat (v.userId)
+      // Verifica se existe ALGUM voto deste usuário
+      const myVote = votes.find((v: any) => {
+          const voteUserId = v.userId || (v.user && v.user.id);
+          return voteUserId === user.id;
+      });
+
+      if (myVote) {
+          setHasVoted(true);
+          setVoteReceipt(myVote.id || myVote.hash);
+      } else {
+          setHasVoted(false);
+          setVoteReceipt(null);
+      }
+  };
+
+  // --- LÓGICA DE CÁLCULO DA ATA ---
   const ataPreview = useMemo(() => {
     if (!assembly) return '';
 
@@ -77,7 +122,6 @@ const VotingRoom: React.FC = () => {
         ];
 
     // 2. Contabiliza os votos dinamicamente comparando IDs
-    // Aqui está a mágica: Compara o ID do voto com o ID da opção
     const results = activeOptions.map((opt: any) => {
         const count = votes.filter((v: any) => v.optionId === opt.id).length;
         // Cálculo de % da fração ideal (opcional, mas legal na ata)
@@ -150,7 +194,6 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
             return;
         }
 
-        // --- CORREÇÃO: Uso de (import.meta as any) para evitar erro TS2339 e lógica HTTPS ---
         const apiUrl = (import.meta as any).env.VITE_API_URL || 'http://localhost:8080/api';
         const baseUrl = apiUrl.replace(/\/api$/, '');
         const socketUrl = `${baseUrl}/ws-votzz`;
@@ -204,7 +247,7 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
   // --- 2. CARGA DE DADOS ---
   useEffect(() => {
     loadData();
-  }, [id, user]);
+  }, [id]); // Carrega inicialmente pelo ID
 
   const loadData = async () => {
     if (!id) return;
@@ -214,20 +257,10 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
         const resAssembly = await api.get(`/assemblies/${id}`);
         setAssembly(resAssembly.data);
         
-        if (resAssembly.data.votes) {
-            const myVote = resAssembly.data.votes.find((v: any) => v.userId === user?.id);
-            if (myVote) {
-                setHasVoted(true);
-                setVoteReceipt(myVote.id); 
-            }
-        }
+        // A verificação de voto foi movida para o useEffect unificado acima
+        // para garantir sincronia com o user.
     } catch (e) {
         console.error("Erro ao carregar assembleia:", e);
-    }
-
-    // 2. Multi-Unit Data
-    if (user && user.role === 'MORADOR') {
-        // As unidades já são inicializadas no estado 'myUnits' vindo do AuthContext
     }
 
     try {
@@ -245,12 +278,16 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
   // Função que dispara o processo de voto
   const handleVote = () => {
     if (!id || !selectedOption || !user) return;
+
+    console.log("DEBUG: Iniciando voto. Unidades disponíveis:", myUnits);
     
     // Se o morador tem mais de 1 unidade, perguntamos por quais ele quer votar
     if (myUnits.length > 1) {
-        setTempSelectedUnits(myUnits); // Reset para todas selecionadas por default
+        // Se a seleção temporária estiver vazia por algum motivo, preenche com todas
+        if (tempSelectedUnits.length === 0) setTempSelectedUnits(myUnits);
         setShowUnitModal(true);
     } else {
+        // Se só tem 1 unidade, vota direto
         submitFinalVote(myUnits);
     }
   };
@@ -258,15 +295,22 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
   // Função que envia o voto real para o backend
   const submitFinalVote = async (unitsToVote: string[]) => {
     try {
+      if (unitsToVote.length === 0) {
+        alert("Selecione pelo menos uma unidade para votar.");
+        return;
+      }
+
       const response = await api.post(`/assemblies/${id}/vote`, { 
         optionId: selectedOption, 
         userId: user?.id,
         units: unitsToVote // Enviamos a lista de strings
       });
+      
       setHasVoted(true);
       setVoteReceipt(response.data.id || 'CONFIRMADO-MULTI');
       setShowUnitModal(false);
-      setTotalWeight(unitsToVote.length); // Atualiza o peso baseado na seleção final
+      setTotalWeight(unitsToVote.length); // Atualiza o peso exibido
+      
       alert(`Voto registrado com sucesso para ${unitsToVote.length} unidade(s)!`);
       loadData(); 
     } catch (e: any) { 
@@ -481,12 +525,12 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                         <p className="text-3xl font-black mt-1">{totalVotes} <span className="text-sm font-medium text-slate-400">presentes</span></p>
                     </div>
                     <div className="bg-white/10 backdrop-blur-sm p-5 rounded-2xl border border-white/10">
-                         <p className="text-slate-400 text-[10px] uppercase font-black tracking-widest">Fração Ideal Total</p>
-                         <p className="text-3xl font-black mt-1">{(totalFraction * 100).toFixed(2)}%</p>
+                          <p className="text-slate-400 text-[10px] uppercase font-black tracking-widest">Fração Ideal Total</p>
+                          <p className="text-3xl font-black mt-1">{(totalFraction * 100).toFixed(2)}%</p>
                     </div>
                     <div className="bg-white/10 backdrop-blur-sm p-5 rounded-2xl border border-white/10">
-                         <p className="text-slate-400 text-[10px] uppercase font-black tracking-widest">Convocação</p>
-                         <p className="text-3xl font-black mt-1 text-emerald-400">100% <span className="text-sm font-medium text-slate-400">entregue</span></p>
+                          <p className="text-slate-400 text-[10px] uppercase font-black tracking-widest">Convocação</p>
+                          <p className="text-3xl font-black mt-1 text-emerald-400">100% <span className="text-sm font-medium text-slate-400">entregue</span></p>
                     </div>
                 </div>
               </div>
@@ -601,6 +645,7 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                     <div className="bg-slate-50 p-3 rounded-lg mb-4 border border-slate-200">
                         <p className="text-xs text-slate-500 uppercase font-bold mb-1 flex justify-between">
                             <span>Seu Poder de Voto</span>
+                            {/* MOSTRA O TOTAL DE UNIDADES AQUI */}
                             {totalWeight > 1 && <span className="text-emerald-600 flex items-center gap-1"><Layers size={10}/> {totalWeight} Unidades</span>}
                         </p>
                         
@@ -664,7 +709,8 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                                 disabled={!selectedOption}
                                 className="w-full mt-6 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold py-3 rounded-lg shadow-md transition-colors"
                             >
-                                {totalWeight > 1 ? `Confirmar Voto (${totalWeight}x)` : 'Confirmar Voto Seguro'}
+                                {/* BOTÃO DINÂMICO CONFORME QUANTIDADE DE UNIDADES */}
+                                {myUnits.length > 1 ? 'Selecionar Unidades & Confirmar' : 'Confirmar Voto Seguro'}
                             </button>
                         </div>
                     ) : (

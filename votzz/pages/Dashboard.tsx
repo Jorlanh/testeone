@@ -11,7 +11,7 @@ import { Assembly, User } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { SubscriptionStatus } from '../components/SubscriptionStatus';
 
-// Interfaces preservadas
+// Interfaces
 interface AuditLog {
   id: string;
   action: string;
@@ -48,11 +48,17 @@ const Dashboard: React.FC = () => {
   const [reports, setReports] = useState<FinancialReport[]>([]);
   const [expirationDate, setExpirationDate] = useState<string | null>(null);
   
-  // --- UPDATED: Logic to get Condo Name ---
   const [condoName, setCondoName] = useState<string>('Painel do Condomínio');
 
+  const fixUrl = (url: string) => {
+    if (!url) return '';
+    if (url.includes('storage.votzz.com')) {
+        return url.replace('https://storage.votzz.com', 'https://votzz-files-prod.s3.sa-east-1.amazonaws.com');
+    }
+    return url;
+  };
+
   useEffect(() => {
-      // Priority: 1. User Context (tenant object) 2. User Context (tenantName prop) 3. LocalStorage 4. Default
       const getCondoName = () => {
           if (user?.tenant?.nome) return user.tenant.nome;
           if ((user as any)?.tenantName) return (user as any).tenantName;
@@ -69,7 +75,6 @@ const Dashboard: React.FC = () => {
       };
       setCondoName(getCondoName());
   }, [user]);
-  // ----------------------------------------
 
   const [realStats, setRealStats] = useState({
     totalUsers: 0,
@@ -86,7 +91,11 @@ const Dashboard: React.FC = () => {
   
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [bankForm, setBankForm] = useState<BankInfo>({ bankName: '', agency: '', account: '', pixKey: '', asaasWalletId: '' });
-  const [userForm, setUserForm] = useState({ nome: '', email: '', cpf: '', whatsapp: '', unidade: '', bloco: '', role: 'MORADOR', password: '' });
+  
+  // CORREÇÃO: Inicializar valores para evitar 'null' no input
+  const [userForm, setUserForm] = useState({ 
+      nome: '', email: '', cpf: '', whatsapp: '', unidade: '', bloco: '', role: 'MORADOR', password: '' 
+  });
   
   const [reportForm, setReportForm] = useState({ month: 'Janeiro', year: new Date().getFullYear() });
 
@@ -95,11 +104,10 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [user]);
 
   const loadData = async () => {
     try {
-        // Rotas base que todos os perfis acessam
         const promises: Promise<any>[] = [
           api.get('/assemblies'),             
           api.get('/financial/balance'),      
@@ -107,13 +115,13 @@ const Dashboard: React.FC = () => {
           api.get('/condo/dashboard/stats').catch(() => ({ data: null }))
         ];
 
-        // CORREÇÃO: Somente dispara as rotas de gestão se o usuário for gestor.
-        // O .catch(() => ({ data: ... })) agora é tipado como 'any' para não dar erro no VS Code.
-        if (isManager) {
-            promises.push(api.get('/users').catch((e: any) => ({ data: [] })));
-            promises.push(api.get('/tenants/audit-logs').catch((e: any) => ({ data: [] })));
-            promises.push(api.get('/tenants/bank-info').catch((e: any) => ({ data: null })));
-            promises.push(api.get('/tenants/my-subscription').catch((e: any) => ({ data: null })));
+        const hasTenantContext = user?.tenantId || (user as any)?.tenant?.id;
+
+        if (isManager && hasTenantContext) {
+            promises.push(api.get('/users').catch(() => ({ data: [] })));
+            promises.push(api.get('/tenants/audit-logs').catch(() => ({ data: [] })));
+            promises.push(api.get('/tenants/bank-info').catch(() => ({ data: null })));
+            promises.push(api.get('/tenants/my-subscription').catch(() => ({ data: null })));
         }
 
         const results = await Promise.allSettled(promises);
@@ -129,21 +137,33 @@ const Dashboard: React.FC = () => {
           setRealStats(results[3].value.data);
         }
 
-        // Processa dados de gestão se for o caso
-        if (isManager) {
+        if (isManager && hasTenantContext) {
             if (results[4] && results[4].status === 'fulfilled') setCondoUsers(Array.isArray(results[4].value.data) ? results[4].value.data : []);
             if (results[5] && results[5].status === 'fulfilled') setAuditLogs(results[5].value.data || []);
-            if (results[6] && results[6].status === 'fulfilled') setBankForm(results[6].value.data || bankForm);
+            
+            // CORREÇÃO: Tratar dados nulos do banco
+            if (results[6] && results[6].status === 'fulfilled') {
+                const data = results[6].value.data;
+                if (data) {
+                    setBankForm({
+                        bankName: data.bankName || '',
+                        agency: data.agency || '',
+                        account: data.account || '',
+                        pixKey: data.pixKey || '',
+                        asaasWalletId: data.asaasWalletId || ''
+                    });
+                }
+            }
             if (results[7] && results[7].status === 'fulfilled' && results[7].value?.data) {
                 setExpirationDate(results[7].value.data.expirationDate);
             }
         }
-
     } catch (error) {
         console.error("Erro ao carregar dados do dashboard:", error);
     }
   };
 
+  // Memos de Cálculo (Mantidos)
   const activeAssembliesList = useMemo(() => {
     if (!Array.isArray(assemblies)) return [];
     return assemblies.filter(a => {
@@ -157,16 +177,9 @@ const Dashboard: React.FC = () => {
     return assemblies.reduce((acc, curr) => acc + (curr.votes?.length || 0), 0);
   }, [assemblies]);
   
-  const engagementRate = useMemo(() => {
-    if (!Array.isArray(condoUsers) || condoUsers.length === 0 || !Array.isArray(assemblies) || assemblies.length === 0) return 0;
-    const avgVotes = totalVotes / assemblies.length;
-    return Math.round((avgVotes / condoUsers.length) * 100);
-  }, [totalVotes, assemblies, condoUsers]);
-
   const chartData = useMemo(() => {
     const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const data = months.map(m => ({ name: m, votos: 0 }));
-    
     if (Array.isArray(assemblies)) {
         assemblies.forEach(a => {
             const dateStr = a.startDate || a.dataInicio || new Date().toISOString();
@@ -188,6 +201,7 @@ const Dashboard: React.FC = () => {
     return hoursLeft < 48 && hoursLeft > 0;
   });
 
+  // Handlers (Mantidos)
   const handleUpdateBalance = () => {
     const val = prompt("Informe o saldo atualizado (R$):", financial.balance.toString());
     if (val && !isNaN(parseFloat(val))) {
@@ -232,6 +246,7 @@ const Dashboard: React.FC = () => {
         return;
     }
     setEditingUser(u);
+    // CORREÇÃO: Fallback para string vazia em todos os campos
     setUserForm({
         nome: u.nome || '',
         email: u.email || '',
@@ -254,12 +269,10 @@ const Dashboard: React.FC = () => {
   const handleUploadReport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
     const formData = new FormData();
     formData.append('file', file);
     formData.append('month', reportForm.month);
     formData.append('year', reportForm.year.toString());
-    
     try {
         await api.post('/financial/reports/upload', formData, {
             headers: { 'Content-Type': 'multipart/form-data' }
@@ -268,14 +281,8 @@ const Dashboard: React.FC = () => {
         loadData();
         e.target.value = ''; 
     } catch (error: any) { 
-        console.error("Erro upload:", error.response?.data);
-        const msg = error.response?.data?.message || "";
-        
-        if (msg.includes("AWS Access Key Id") || error.response?.status === 500) {
-             alert("Erro de configuração no servidor (AWS S3 inválido). O arquivo não pôde ser salvo na nuvem.");
-        } else {
-             alert("Erro ao enviar relatório: " + (msg || "Verifique o arquivo."));
-        }
+        const msg = error.response?.data?.message || "Verifique o arquivo.";
+        alert("Erro ao enviar relatório: " + msg);
     }
   };
 
@@ -293,21 +300,17 @@ const Dashboard: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Olá, {displayName.split(' ')[0]}</h1>
-          
           <div className="flex items-center gap-2 text-emerald-600 font-bold mt-1">
             <Building size={18} />
             <span>{condoName}</span>
           </div>
-
           <p className="text-slate-500 flex items-center gap-2 mt-1 text-sm">
             <Calendar className="w-4 h-4" />
             {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
         </div>
         <div className="flex items-center gap-3">
-           <span className="text-xs font-medium bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full border border-emerald-200">
-             Votzz OS 2.0
-           </span>
+           <span className="text-xs font-medium bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full border border-emerald-200">Votzz OS 2.0</span>
         </div>
       </div>
 
@@ -352,7 +355,7 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {isManager && (
+      {isManager ? (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Link to="/create-assembly" className="bg-emerald-600 hover:bg-emerald-700 text-white p-4 rounded-xl shadow-md transition-all hover:-translate-y-1 flex flex-col items-center justify-center text-center group">
             <div className="bg-white/20 p-2 rounded-full mb-2 group-hover:scale-110 transition-transform"><Plus className="w-6 h-6" /></div>
@@ -370,6 +373,13 @@ const Dashboard: React.FC = () => {
             <div className={`p-2 rounded-full mb-2 ${showUserList ? 'bg-emerald-100' : 'bg-slate-100'}`}><Users className={`w-6 h-6 ${showUserList ? 'text-emerald-600' : 'text-slate-500'}`} /></div>
             <span className={`text-sm ${showUserList ? 'font-bold text-emerald-700' : 'font-medium'}`}>{showUserList ? 'Fechar Gestão' : 'Gerenciar Usuários'}</span>
           </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+             <button onClick={() => setIsReportModalOpen(true)} className="bg-white border border-slate-200 hover:border-emerald-500 text-slate-600 p-4 rounded-xl shadow-sm transition-all hover:-translate-y-1 flex flex-col items-center justify-center text-center group">
+                <div className="bg-emerald-50 p-2 rounded-full mb-2 group-hover:bg-emerald-100 transition-colors"><FileText className="w-6 h-6 text-emerald-600" /></div>
+                <span className="font-bold text-sm">Relatórios Financeiros</span>
+             </button>
         </div>
       )}
 
@@ -419,14 +429,14 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Chart Section */}
+      {/* Chart Section - CORREÇÃO RECHARTS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 lg:col-span-2">
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 lg:col-span-2 min-w-0">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-lg font-bold text-slate-800">Evolução de Participação</h2>
           </div>
           
-          <div style={{ width: '100%', height: 300 }}>
+          <div className="w-full h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData.length > 0 ? chartData : [{name: 'Jan', votos: 0}]} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
@@ -478,7 +488,7 @@ const Dashboard: React.FC = () => {
                {reports.slice(0, 3).map(r => (
                  <div key={r.id} className="flex justify-between items-center text-sm border-b border-slate-50 pb-2 last:border-0">
                    <span className="text-slate-600 font-medium">{r.month} {r.year}</span>
-                   <a href={r.url} target="_blank" rel="noreferrer" className="text-emerald-600 font-bold text-xs hover:underline uppercase tracking-tight">Ver PDF</a>
+                   <a href={fixUrl(r.url)} target="_blank" rel="noreferrer" className="text-emerald-600 font-bold text-xs hover:underline uppercase tracking-tight">Ver PDF</a>
                  </div>
                ))}
                {reports.length === 0 && <p className="text-xs text-slate-400 italic">Nenhum disponível.</p>}
@@ -517,6 +527,7 @@ const Dashboard: React.FC = () => {
                     <h3 className="font-black text-xl flex items-center gap-2 text-slate-800"><FileText className="text-blue-500"/> Relatórios Financeiros</h3>
                     <button onClick={() => setIsReportModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors text-2xl font-light">&times;</button>
                 </div>
+                {/* Apenas Gestores podem fazer upload */}
                 {isManager && (
                     <div className="mb-8 p-6 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
                         <p className="text-xs font-black text-slate-500 mb-4 text-center uppercase tracking-widest">Adicionar Novo Relatório</p>
@@ -556,6 +567,7 @@ const Dashboard: React.FC = () => {
                     </div>
                 )}
                 
+                {/* Lista de Relatórios - Visível para TODOS */}
                 <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
                     {reports.length === 0 && <p className="text-sm text-slate-400 italic text-center py-4">Nenhum arquivo encontrado.</p>}
                     {reports.map(r => (
@@ -567,7 +579,7 @@ const Dashboard: React.FC = () => {
                                     <p className="text-[10px] text-slate-400 font-mono">{r.fileName.substring(0, 20)}...</p>
                                 </div>
                             </div>
-                            <a href={r.url} target="_blank" rel="noreferrer" className="bg-slate-100 text-slate-600 p-2 rounded-lg hover:bg-blue-600 hover:text-white transition-all"><Download size={16}/></a>
+                            <a href={fixUrl(r.url)} target="_blank" rel="noreferrer" className="bg-slate-100 text-slate-600 p-2 rounded-lg hover:bg-blue-600 hover:text-white transition-all"><Download size={16}/></a>
                         </div>
                     ))}
                 </div>
@@ -647,6 +659,16 @@ const Dashboard: React.FC = () => {
                             <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Bloco/Torre</label>
                             <input className="w-full p-3 border border-slate-200 rounded-xl text-slate-700 outline-none" value={userForm.bloco} onChange={e => setUserForm({...userForm, bloco: e.target.value})} />
                         </div>
+                    </div>
+                    {/* CAMPO ADICIONADO: WhatsApp */}
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">WhatsApp / Telefone</label>
+                        <input 
+                            className="w-full p-3 border border-slate-200 rounded-xl text-slate-700 outline-none focus:ring-2 focus:ring-blue-500" 
+                            placeholder="(99) 99999-9999" 
+                            value={userForm.whatsapp} 
+                            onChange={e => setUserForm({...userForm, whatsapp: e.target.value})} 
+                        />
                     </div>
                     <div className="space-y-1">
                         <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Nível de Acesso</label>
