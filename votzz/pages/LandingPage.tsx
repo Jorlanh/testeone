@@ -81,7 +81,6 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
           {/* Desktop Nav */}
           <nav className="hidden md:flex items-center space-x-6 lg:space-x-8">
             <button onClick={() => scrollToSection('features')} className="text-sm font-medium hover:text-emerald-600 transition-colors">Funcionalidades</button>
-            <Link to="/governance" className="text-sm font-medium hover:text-emerald-600 transition-colors">Governança Digital</Link>
             <Link to="/pricing" className="text-sm font-medium hover:text-emerald-600 transition-colors">Preços</Link>
             <Link to="/affiliate/login" className="text-sm font-bold text-slate-900 flex items-center gap-1 hover:text-emerald-600 transition-colors group">
               <TrendingUp className="w-4 h-4 text-emerald-500 group-hover:scale-110 transition-transform" />
@@ -126,7 +125,6 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
         {mobileMenuOpen && (
           <div className="md:hidden absolute top-full left-0 right-0 bg-white border-t border-slate-100 shadow-lg p-4 flex flex-col space-y-4 animate-in slide-in-from-top-2">
             <button onClick={() => scrollToSection('features')} className="text-left py-2 font-medium border-b border-slate-50">Funcionalidades</button>
-            <Link to="/governance" className="text-left py-2 font-medium border-b border-slate-50">Governança Digital</Link>
             <Link to="/pricing" className="text-left py-2 font-medium border-b border-slate-50">Preços</Link>
             <Link to="/affiliate/login" className="text-left py-2 font-bold text-emerald-700 border-b border-slate-50 flex items-center gap-2">
               <TrendingUp className="w-4 h-4" />
@@ -442,7 +440,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
 
               <div className="md:w-1/2">
                   <div className="bg-slate-800/50 backdrop-blur border border-slate-700 rounded-2xl p-8 transform hover:rotate-1 transition-transform duration-500">
-                     <div className="flex items-center justify-between mb-8 border-b border-slate-700 pb-4">
+                      <div className="flex items-center justify-between mb-8 border-b border-slate-700 pb-4">
                         <div>
                            <p className="text-sm text-slate-400">Ganhos este mês</p>
                            <p className="text-3xl font-bold text-white">R$ 3.450,00</p>
@@ -450,11 +448,11 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
                         <div className="bg-emerald-500/20 p-2 rounded-lg">
                            <TrendingUp className="w-6 h-6 text-emerald-500" />
                         </div>
-                     </div>
-                     <div className="space-y-4">
+                      </div>
+                      <div className="space-y-4">
                         <div className="flex justify-between items-center text-sm"><span className="text-slate-300">Condomínio Jardins</span><span className="text-emerald-400 font-bold">+ R$ 45,00/mês</span></div>
                         <div className="flex justify-between items-center text-sm"><span className="text-slate-300">Clube Pinheiros</span><span className="text-emerald-400 font-bold">+ R$ 120,00/mês</span></div>
-                     </div>
+                      </div>
                   </div>
               </div>
             </div>
@@ -478,7 +476,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
             <div className="grid md:grid-cols-4 gap-8 mb-8">
               <div>
                   <div className="mb-4">
-                     <Link to="/"><Logo theme="light" showSlogan={true} /></Link>
+                      <Link to="/"><Logo theme="light" showSlogan={true} /></Link>
                   </div>
                   <p className="text-sm">Tecnologia para decisões democráticas e transparentes.</p>
               </div>

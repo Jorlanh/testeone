@@ -43,13 +43,13 @@ export function Pricing() {
       planId = PLAN_IDS.ESSENCIAL;
     } else if (inputUnits <= 80) {
       planName = 'Business';
-      monthlyBase = 490.00;
+      monthlyBase = 349.00;
       planId = PLAN_IDS.BUSINESS;
     } else {
       planName = 'Custom';
       const extra = inputUnits - 80;
       // [ATUALIZADO] 1.50 por unidade extra conforme pedido
-      monthlyBase = 490.00 + (extra * 1.50);
+      monthlyBase = 349.00 + (extra * 1.50);
       planId = PLAN_IDS.CUSTOM;
     }
 
@@ -72,7 +72,7 @@ export function Pricing() {
   const getStaticPrice = (planType: 'Essencial' | 'Business') => {
     let base = 0;
     if (planType === 'Essencial') base = 190.00;
-    if (planType === 'Business') base = 490.00;
+    if (planType === 'Business') base = 349.00;
 
     if (cycle === 'TRIMESTRAL') return base * 3;
     return (base * 12) * 0.8;
@@ -277,7 +277,7 @@ export function Pricing() {
             
             {activePlan.planName === 'Custom' && (
               <div className="bg-slate-800 p-3 rounded-lg text-xs text-slate-300 mb-6 border border-slate-700">
-                <p>Base Business (80 un): R$ 490,00</p>
+                <p>Base Business (80 un): R$ 349,00</p>
                 <p className="text-emerald-400">+ R$ 1,50 por unidade extra</p>
               </div>
             )}

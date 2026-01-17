@@ -4,14 +4,13 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, CartesianGrid 
 } from 'recharts';
 import { 
-  Users, FileText, CheckCircle, AlertTriangle, Plus, Megaphone, TrendingUp, Calendar, Wallet, Shield, Edit, Settings, Upload, Download, FileCheck, Banknote, ShieldAlert, ArrowRight, Building
+  Users, FileText, CheckCircle, Plus, Megaphone, Calendar, Wallet, Edit, Settings, Upload, Download, FileCheck, Banknote, ShieldAlert, ArrowRight, Building, Shield
 } from 'lucide-react';
 import api from '../services/api'; 
 import { Assembly, User } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { SubscriptionStatus } from '../components/SubscriptionStatus';
 
-// Interfaces
 interface AuditLog {
   id: string;
   action: string;
@@ -42,12 +41,15 @@ const Dashboard: React.FC = () => {
   const navigate = useNavigate();
 
   const [assemblies, setAssemblies] = useState<Assembly[]>([]);
-  const [financial, setFinancial] = useState({ balance: 0, lastUpdate: '' });
+  const [financial, setFinancial] = useState<{ balance: number; lastUpdate: string }>({ 
+    balance: 0, 
+    lastUpdate: '' 
+  });
+  
   const [condoUsers, setCondoUsers] = useState<User[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [reports, setReports] = useState<FinancialReport[]>([]);
   const [expirationDate, setExpirationDate] = useState<string | null>(null);
-  
   const [condoName, setCondoName] = useState<string>('Painel do Condomínio');
 
   const fixUrl = (url: string) => {
@@ -92,7 +94,6 @@ const Dashboard: React.FC = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [bankForm, setBankForm] = useState<BankInfo>({ bankName: '', agency: '', account: '', pixKey: '', asaasWalletId: '' });
   
-  // CORREÇÃO: Inicializar valores para evitar 'null' no input
   const [userForm, setUserForm] = useState({ 
       nome: '', email: '', cpf: '', whatsapp: '', unidade: '', bloco: '', role: 'MORADOR', password: '' 
   });
@@ -103,47 +104,64 @@ const Dashboard: React.FC = () => {
   const displayName = user?.nome || user?.email?.split('@')[0] || 'Morador';
 
   useEffect(() => {
-    loadData();
+    if (user) {
+        loadData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const loadData = async () => {
     try {
-        const promises: Promise<any>[] = [
-          api.get('/assemblies'),             
-          api.get('/financial/balance'),      
-          api.get('/financial/reports'),      
+        const basePromises = [
+          api.get('/assemblies').catch(() => ({ data: [] })),             
+          api.get('/financial/balance').catch(() => ({ data: { balance: 0, lastUpdate: 'N/A' } })),      
+          api.get('/financial/reports').catch(() => ({ data: [] })),      
           api.get('/condo/dashboard/stats').catch(() => ({ data: null }))
         ];
+
+        const baseResults = await Promise.allSettled(basePromises);
+
+        if (baseResults[0].status === 'fulfilled') {
+            setAssemblies(Array.isArray(baseResults[0].value?.data) ? baseResults[0].value.data : []);
+        }
+        
+        if (baseResults[1].status === 'fulfilled') {
+            const finData = baseResults[1].value?.data;
+            setFinancial({
+                balance: Number(finData?.balance ?? 0),
+                lastUpdate: finData?.lastUpdate || 'N/A'
+            });
+        }
+        
+        if (baseResults[2].status === 'fulfilled') {
+            setReports(baseResults[2].value?.data || []);
+        }
+        
+        if (baseResults[3].status === 'fulfilled' && baseResults[3].value?.data) {
+            setRealStats(baseResults[3].value.data);
+        }
 
         const hasTenantContext = user?.tenantId || (user as any)?.tenant?.id;
 
         if (isManager && hasTenantContext) {
-            promises.push(api.get('/users').catch(() => ({ data: [] })));
-            promises.push(api.get('/tenants/audit-logs').catch(() => ({ data: [] })));
-            promises.push(api.get('/tenants/bank-info').catch(() => ({ data: null })));
-            promises.push(api.get('/tenants/my-subscription').catch(() => ({ data: null })));
-        }
+            // Correção da Linha 151/155: Catch silencioso para não quebrar a Promise.allSettled
+            const adminPromises = [
+                api.get('/users').catch(() => ({ data: [] })),
+                api.get('/tenants/audit-logs').catch(() => ({ data: [] })),
+                api.get('/tenants/bank-info').catch(() => ({ data: null })),
+                api.get('/tenants/my-subscription').catch(() => ({ data: null }))
+            ];
 
-        const results = await Promise.allSettled(promises);
+            const adminResults = await Promise.allSettled(adminPromises);
 
-        if (results[0].status === 'fulfilled') {
-            const data = Array.isArray(results[0].value.data) ? results[0].value.data : [];
-            setAssemblies(data);
-        }
-        if (results[1].status === 'fulfilled') setFinancial(results[1].value.data || { balance: 0, lastUpdate: 'N/A' });
-        if (results[2].status === 'fulfilled') setReports(results[2].value.data || []);
-        
-        if (results[3].status === 'fulfilled' && results[3].value.data) {
-          setRealStats(results[3].value.data);
-        }
-
-        if (isManager && hasTenantContext) {
-            if (results[4] && results[4].status === 'fulfilled') setCondoUsers(Array.isArray(results[4].value.data) ? results[4].value.data : []);
-            if (results[5] && results[5].status === 'fulfilled') setAuditLogs(results[5].value.data || []);
-            
-            // CORREÇÃO: Tratar dados nulos do banco
-            if (results[6] && results[6].status === 'fulfilled') {
-                const data = results[6].value.data;
+            if (adminResults[0].status === 'fulfilled') {
+                setCondoUsers(Array.isArray(adminResults[0].value?.data) ? adminResults[0].value.data : []);
+            }
+            if (adminResults[1].status === 'fulfilled') {
+                setAuditLogs(adminResults[1].value?.data || []);
+            }
+            if (adminResults[2].status === 'fulfilled') {
+                const data = adminResults[2].value?.data;
                 if (data) {
                     setBankForm({
                         bankName: data.bankName || '',
@@ -154,16 +172,18 @@ const Dashboard: React.FC = () => {
                     });
                 }
             }
-            if (results[7] && results[7].status === 'fulfilled' && results[7].value?.data) {
-                setExpirationDate(results[7].value.data.expirationDate);
+            if (adminResults[3].status === 'fulfilled') {
+                const subData = adminResults[3].value?.data;
+                if (subData && subData.expirationDate) {
+                    setExpirationDate(subData.expirationDate);
+                }
             }
         }
     } catch (error) {
-        console.error("Erro ao carregar dados do dashboard:", error);
+        console.error("Erro geral no dashboard:", error);
     }
   };
 
-  // Memos de Cálculo (Mantidos)
   const activeAssembliesList = useMemo(() => {
     if (!Array.isArray(assemblies)) return [];
     return assemblies.filter(a => {
@@ -178,19 +198,23 @@ const Dashboard: React.FC = () => {
   }, [assemblies]);
   
   const chartData = useMemo(() => {
+    // Se não houver assembleias, retorna array vazio para não bugar o gráfico
+    if (!assemblies || assemblies.length === 0) return [];
+
     const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const data = months.map(m => ({ name: m, votos: 0 }));
-    if (Array.isArray(assemblies)) {
-        assemblies.forEach(a => {
-            const dateStr = a.startDate || a.dataInicio || new Date().toISOString();
-            const date = new Date(dateStr); 
-            if (!isNaN(date.getTime())) {
-                const monthIdx = date.getMonth();
-                const votesCount = a.votes?.length || 0;
+    
+    assemblies.forEach(a => {
+        const dateStr = a.startDate || a.dataInicio || new Date().toISOString();
+        const date = new Date(dateStr); 
+        if (!isNaN(date.getTime())) {
+            const monthIdx = date.getMonth();
+            const votesCount = a.votes?.length || 0;
+            if(data[monthIdx]) {
                 data[monthIdx].votos += votesCount;
             }
-        });
-    }
+        }
+    });
     return data;
   }, [assemblies]);
 
@@ -201,9 +225,8 @@ const Dashboard: React.FC = () => {
     return hoursLeft < 48 && hoursLeft > 0;
   });
 
-  // Handlers (Mantidos)
   const handleUpdateBalance = () => {
-    const val = prompt("Informe o saldo atualizado (R$):", financial.balance.toString());
+    const val = prompt("Informe o saldo atualizado (R$):", (financial?.balance ?? 0).toString());
     if (val && !isNaN(parseFloat(val))) {
       api.post('/financial/update', { balance: parseFloat(val) })
           .then(() => loadData())
@@ -246,7 +269,6 @@ const Dashboard: React.FC = () => {
         return;
     }
     setEditingUser(u);
-    // CORREÇÃO: Fallback para string vazia em todos os campos
     setUserForm({
         nome: u.nome || '',
         email: u.email || '',
@@ -320,7 +342,9 @@ const Dashboard: React.FC = () => {
             <div className="flex justify-between items-start">
                 <div>
                     <p className="text-emerald-400 text-xs font-bold uppercase tracking-widest">Saldo Atual em Caixa</p>
-                    <h2 className="text-4xl font-black mt-2">R$ {financial.balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h2>
+                    <h2 className="text-4xl font-black mt-2">
+                        R$ {(financial?.balance ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </h2>
                 </div>
                 {isManager && (
                     <button onClick={() => setIsBankModalOpen(true)} className="p-2 bg-white/10 rounded-lg hover:bg-white/20 transition-colors" title="Configurar Conta Bancária">
@@ -328,7 +352,7 @@ const Dashboard: React.FC = () => {
                     </button>
                 )}
             </div>
-            <p className="text-slate-400 text-xs mt-4 italic">Última atualização: {financial.lastUpdate || 'Hoje'}</p>
+            <p className="text-slate-400 text-xs mt-4 italic">Última atualização: {financial?.lastUpdate || 'Hoje'}</p>
             {isManager && (
               <button 
                 onClick={handleUpdateBalance}
@@ -343,14 +367,14 @@ const Dashboard: React.FC = () => {
 
         <div className="grid grid-cols-2 gap-4">
            <div className="bg-white p-6 rounded-2xl border shadow-sm flex flex-col justify-center">
-              <Users className="text-blue-500 mb-2" />
-              <p className="text-3xl font-black text-slate-800">{realStats.totalUsers || condoUsers.length}</p>
-              <p className="text-xs text-slate-500 font-bold uppercase">Moradores</p>
+             <Users className="text-blue-500 mb-2" />
+             <p className="text-3xl font-black text-slate-800">{realStats.totalUsers || condoUsers.length}</p>
+             <p className="text-xs text-slate-500 font-bold uppercase">Moradores</p>
            </div>
            <div className="bg-white p-6 rounded-2xl border shadow-sm flex flex-col justify-center">
-              <CheckCircle className="text-emerald-500 mb-2" />
-              <p className="text-3xl font-black text-slate-800">{realStats.yearlyVotes || totalVotes}</p>
-              <p className="text-xs text-slate-500 font-bold uppercase">Votos (Ano)</p>
+             <CheckCircle className="text-emerald-500 mb-2" />
+             <p className="text-3xl font-black text-slate-800">{realStats.yearlyVotes || totalVotes}</p>
+             <p className="text-xs text-slate-500 font-bold uppercase">Votos (Ano)</p>
            </div>
         </div>
       </div>
@@ -376,10 +400,10 @@ const Dashboard: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-             <button onClick={() => setIsReportModalOpen(true)} className="bg-white border border-slate-200 hover:border-emerald-500 text-slate-600 p-4 rounded-xl shadow-sm transition-all hover:-translate-y-1 flex flex-col items-center justify-center text-center group">
+              <button onClick={() => setIsReportModalOpen(true)} className="bg-white border border-slate-200 hover:border-emerald-500 text-slate-600 p-4 rounded-xl shadow-sm transition-all hover:-translate-y-1 flex flex-col items-center justify-center text-center group">
                 <div className="bg-emerald-50 p-2 rounded-full mb-2 group-hover:bg-emerald-100 transition-colors"><FileText className="w-6 h-6 text-emerald-600" /></div>
                 <span className="font-bold text-sm">Relatórios Financeiros</span>
-             </button>
+              </button>
         </div>
       )}
 
@@ -429,29 +453,36 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Chart Section - CORREÇÃO RECHARTS */}
+      {/* Chart Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 lg:col-span-2 min-w-0">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-lg font-bold text-slate-800">Evolução de Participação</h2>
           </div>
           
-          <div className="w-full h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData.length > 0 ? chartData : [{name: 'Jan', votos: 0}]} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorVotos" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                <Area type="monotone" dataKey="votos" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorVotos)" />
-              </AreaChart>
-            </ResponsiveContainer>
+          {/* CORREÇÃO DEFINITIVA DO RECHARTS WIDTH(-1) */}
+          <div style={{ width: '100%', height: 300, position: 'relative', minWidth: 0 }}>
+            {chartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                    <linearGradient id="colorVotos" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
+                    <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                    <Area type="monotone" dataKey="votos" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorVotos)" />
+                </AreaChart>
+                </ResponsiveContainer>
+            ) : (
+                <div className="flex flex-col items-center justify-center h-full text-slate-300">
+                    <p className="text-sm italic">Sem dados de votação no momento.</p>
+                </div>
+            )}
           </div>
 
           {isManager && (
@@ -660,7 +691,6 @@ const Dashboard: React.FC = () => {
                             <input className="w-full p-3 border border-slate-200 rounded-xl text-slate-700 outline-none" value={userForm.bloco} onChange={e => setUserForm({...userForm, bloco: e.target.value})} />
                         </div>
                     </div>
-                    {/* CAMPO ADICIONADO: WhatsApp */}
                     <div className="space-y-1">
                         <label className="text-[10px] font-black text-slate-400 uppercase ml-1">WhatsApp / Telefone</label>
                         <input 
