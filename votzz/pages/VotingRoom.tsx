@@ -1,32 +1,14 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  ArrowLeft, MessageSquare, FileCheck, Shield, Video, Send, Lock, Clock, 
-  FileText, CheckCircle, Gavel, Scale, Download, Eye, EyeOff, Layers, 
-  X, Trash2, Edit, AlertTriangle, Users, Printer, Bot, DownloadCloud,
-  ChevronRight, Info, ExternalLink, Share2, Award, History, Landmark,
-  Monitor, Smartphone, Globe, ShieldAlert, FileSearch, Zap, HardDrive,
-  CloudDownload, Verified, Fingerprint, Activity, Terminal, Database,
-  Cpu, Server, ShieldCheck, Mail
+  ArrowLeft, MessageSquare, FileCheck, Shield, Video, Send, Lock, Clock, FileText, CheckCircle, Gavel, Scale, Download, Eye, EyeOff, Layers, X, Trash2, Edit
 } from 'lucide-react';
 import api from '../services/api'; 
 import { useAuth } from '../context/AuthContext';
 import SockJS from 'sockjs-client';
 import { over } from 'stompjs';
 
-/**
- * ============================================================================
- * VOTZZ GOVERNANCE PROTOCOL v3.0 - ENTERPRISE HIGH-FIDELITY INTERFACE
- * ============================================================================
- * Este componente orquestra a deliberação jurídica em ambiente virtual.
- * Infraestrutura Integrada:
- * - Storage: AWS S3 (Bucket isolado por Condomínio/Tenant)
- * - Mail: AWS SES (Protocolos de Confirmação, Editais e Atas Judiciais)
- * - DB: PostgreSQL (Persistência de Chat e Auditoria Criptográfica de Votos)
- * - Real-time: Cluster WebSocket via STOMP Protocol para Sincronização Global
- * ============================================================================
- */
-
+// Variável global para manter a conexão WebSocket
 let stompClient: any = null;
 
 const VotingRoom: React.FC = () => {
@@ -34,589 +16,844 @@ const VotingRoom: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   
-  // --- 1. ESTADOS DE DADOS CORE (ESTADO DE SINCRO DO BACKEND) ---
+  // --- ESTADOS DE DADOS ---
   const [assembly, setAssembly] = useState<any>(null);
   const [hasVoted, setHasVoted] = useState(false);
   const [voteReceipt, setVoteReceipt] = useState<string | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
   
-  // --- 2. ESTADOS: GESTÃO MULTI-UNIDADES E FRAÇÕES ---
+  // --- ESTADOS: MULTI-UNIDADES ---
+  // Inicializa com array vazio para evitar undefined no primeiro render
   const [myUnits, setMyUnits] = useState<string[]>([]);
   const [totalWeight, setTotalWeight] = useState(1); 
 
-  // --- 3. UI & UX ARCHITECTURE STATES ---
+  // --- ESTADOS DE CONTROLE DE UI ---
   const [showUnitModal, setShowUnitModal] = useState(false);
   const [tempSelectedUnits, setTempSelectedUnits] = useState<string[]>([]);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [chatMsg, setChatMsg] = useState('');
   const [connected, setConnected] = useState(false);
   const [activeTab, setActiveTab] = useState<'VOTE' | 'MANAGE'>('VOTE');
-  const [isHoveringVideo, setIsHoveringVideo] = useState(false);
   
-  // --- 4. AWS S3 & BACKGROUND PROCESSING STATES ---
+  // Estados de Loading/Processamento
   const [closing, setClosing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [summarizing, setSummarizing] = useState(false); 
-  const [exportingDossier, setExportingDossier] = useState(false);
-  const [loadingInitial, setLoadingInitial] = useState(true);
-  const [errorStatus, setErrorStatus] = useState<string | null>(null);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
   
-  // --- 5. PERMISSÕES E STATUS JURÍDICOS ---
-  const isManager = useMemo(() => {
-    return user?.role === 'MANAGER' || user?.role === 'SINDICO' || user?.role === 'ADM_CONDO' || user?.role === 'ADMIN';
-  }, [user]);
-
-  const isSecret = useMemo(() => assembly?.votePrivacy === 'SECRET', [assembly]);
+  // --- PERMISSÕES E STATUS ---
+  const isManager = user?.role === 'MANAGER' || user?.role === 'SINDICO' || user?.role === 'ADM_CONDO' || user?.role === 'ADMIN';
+  const isSecret = assembly?.votePrivacy === 'SECRET';
   
+  // Normalização do Status para verificar se está fechada
   const isClosed = useMemo(() => {
       const s = (assembly?.status || '').toUpperCase();
-      return ['CLOSED', 'ENCERRADA', 'FINALIZADA', 'HISTORICO', 'COMPLETED'].includes(s);
+      return ['CLOSED', 'ENCERRADA', 'FINALIZADA', 'HISTORICO'].includes(s);
   }, [assembly]);
 
-  const canVote = useMemo(() => {
-    return (user?.role === 'MORADOR') || (user?.role === 'SINDICO') || (user?.role === 'ADM_CONDO');
-  }, [user]);
+  // Regra de Voto: Quem pode votar?
+  const canVote = (user?.role === 'MORADOR') || (user?.role === 'SINDICO') || (user?.role === 'ADM_CONDO');
 
-  // --- 6. CÁLCULOS MATEMÁTICOS DE QUÓRUM E FRAÇÃO IDEAL ---
-  const totalVotesCount = useMemo(() => assembly?.votes?.length || 0, [assembly]);
-  const baseFraction = useMemo(() => (user as any)?.fraction || 0.0152, [user]); 
-  const currentTotalFraction = useMemo(() => totalVotesCount * baseFraction, [totalVotesCount, baseFraction]); 
-  const userTotalFraction = useMemo(() => baseFraction * totalWeight, [baseFraction, totalWeight]);
+  // --- ESTATÍSTICAS (Cálculo Dinâmico) ---
+  const totalVotes = assembly?.votes?.length || 0;
+  // Fração Base (do usuário logado - padrão se não vier do backend)
+  const userFraction = (user as any)?.fraction || 0.0152; 
+  // Fração Total da Assembleia (soma simples para visualização)
+  const totalFraction = totalVotes * userFraction; 
+  // Fração Total do Usuário (considerando suas múltiplas unidades)
+  const myTotalFraction = userFraction * totalWeight;
 
-  // --- 7. CORE FUNCTIONS: DATA SYNC (PERSISTÊNCIA DE CHAT E AWS) ---
+  // --- 1. SINCRONIZAÇÃO INICIAL (User + Unidades) ---
+  useEffect(() => {
+    if (user) {
+        // Tenta pegar a lista vinda do login (backend AuthDTOs atualizado)
+        // Se não tiver lista, pega a unidade única do cadastro. Se nada, array vazio.
+        const unitsFromUser = (user as any)?.unidadesList || [user?.unidade].filter(Boolean);
+        
+        console.log("DEBUG: Unidades do usuário carregadas:", unitsFromUser);
 
-  /**
-   * loadData: Sincroniza o estado da assembleia, histórico do chat no PostgreSQL e status de votos.
-   */
+        if (unitsFromUser && unitsFromUser.length > 0) {
+            setMyUnits(unitsFromUser);
+            setTotalWeight(unitsFromUser.length);
+            // Pré-seleciona todas por padrão para facilitar o UX
+            setTempSelectedUnits(unitsFromUser); 
+        } else {
+            // Fallback visual
+            setMyUnits(['Unidade Padrão']);
+        }
+
+        // Se a assembleia já carregou, verifica se esse usuário JÁ votou
+        if (assembly && assembly.votes) {
+            checkIfVoted(assembly.votes);
+        }
+    }
+  }, [user, assembly]); // Executa quando user OU assembly mudarem
+
+  // Função auxiliar para verificar se o usuário já votou
+  const checkIfVoted = (votes: any[]) => {
+      if (!votes || !user) return;
+      
+      // O backend pode retornar o user aninhado (v.user.id) ou flat (v.userId)
+      // Verifica se existe ALGUM voto deste usuário
+      const myVote = votes.find((v: any) => {
+          const voteUserId = v.userId || (v.user && v.user.id);
+          return voteUserId === user.id;
+      });
+
+      if (myVote) {
+          setHasVoted(true);
+          setVoteReceipt(myVote.id || myVote.hash);
+      } else {
+          setHasVoted(false);
+          setVoteReceipt(null);
+      }
+  };
+
+  // --- 2. LÓGICA DE CÁLCULO DA ATA (PREVIEW) ---
+  const ataPreview = useMemo(() => {
+    if (!assembly) return '';
+
+    const votes = assembly.votes || [];
+    
+    // 1. Identifica quais opções estão disponíveis (do Banco ou Fallback)
+    const activeOptions = assembly.options && assembly.options.length > 0 
+      ? assembly.options 
+      : [
+            { id: 'sim', descricao: 'Sim' },
+            { id: 'nao', descricao: 'Não' },
+            { id: 'abstencao', descricao: 'Abstenção' }
+        ];
+
+    // 2. Contabiliza os votos dinamicamente comparando IDs
+    const results = activeOptions.map((opt: any) => {
+        // Correção: Compara tanto ID quanto descrição para compatibilidade
+        const count = votes.filter((v: any) => v.optionId === opt.id || v.optionId === opt.descricao).length;
+        // Cálculo de % da fração ideal (opcional, mas legal na ata)
+        const fractionPercent = ((count * userFraction) * 100).toFixed(4);
+        return {
+            name: opt.descricao || opt.label,
+            count: count,
+            percent: fractionPercent
+        };
+    });
+
+    // 3. Gera o texto dos resultados dinâmico
+    const resultsText = results.map((r: any) => 
+        `- ${r.name}: ${r.count} votos (${r.percent}% da fração ideal)`
+    ).join('\n');
+
+    // 4. Define o vencedor
+    // Ordena por maior número de votos
+    const sortedResults = [...results].sort((a: any, b: any) => b.count - a.count);
+    
+    let decision = "EMPATADO";
+    if (totalVotes === 0) {
+        decision = "SEM QUÓRUM para deliberação";
+    } else if (sortedResults[0].count > (sortedResults[1]?.count || 0)) {
+        decision = `APROVADA a opção: ${sortedResults[0].name}`;
+    }
+
+    const date = new Date();
+    const formattedDate = date.toLocaleDateString('pt-BR');
+    
+    return `ATA DA ASSEMBLEIA GERAL AGE DO CONDOMÍNIO (ID: ${assembly.id.substring(0, 8)})
+
+Aos ${formattedDate}, encerrou-se a votação eletrônica referente à convocação enviada.
+
+A assembleia foi realizada na modalidade VIRTUAL, em conformidade com o Art. 1.354-A do Código Civil Brasileiro.
+
+1. DA CONVOCAÇÃO
+Foi comprovado o envio de notificação aos condôminos via sistema Votzz.
+
+2. DO QUÓRUM
+Estiveram presentes (votantes) ${totalVotes} unidades, representando uma fração ideal total de ${(totalFraction * 100).toFixed(4)}%.
+
+3. DA ORDEM DO DIA: "${assembly.titulo}"
+${assembly.description}
+
+4. DA VOTAÇÃO
+O sistema registrou votos criptografados e auditáveis, com o seguinte resultado:
+${resultsText}
+
+5. DA DELIBERAÇÃO
+Com base nos votos válidos, foi ${decision}.
+
+A presente ata é gerada automaticamente pelo sistema Votzz, com hash de integridade SHA-256.
+
+
+
+
+
+________________________________________________
+Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
+  }, [assembly, totalVotes, totalFraction]);
+
+  // --- 3. CONEXÃO WEBSOCKET ---
+  useEffect(() => {
+    let isMounted = true;
+
+    const connectWebSocket = () => {
+        if (stompClient && stompClient.connected) {
+            if (isMounted) setConnected(true);
+            return;
+        }
+
+        const apiUrl = (import.meta as any).env.VITE_API_URL || 'http://localhost:8080/api';
+        const baseUrl = apiUrl.replace(/\/api$/, '');
+        const socketUrl = `${baseUrl}/ws-votzz`;
+
+        const socket = new SockJS(socketUrl);
+        stompClient = over(socket);
+        stompClient.debug = () => {}; 
+
+        stompClient.connect(
+            {}, 
+            () => { 
+                if (!isMounted) return;
+                setConnected(true);
+                
+                stompClient.subscribe(`/topic/assembly/${id}`, (message: any) => {
+                    if (message.body) {
+                        const newMsg = JSON.parse(message.body);
+                        
+                        if (!newMsg.type || newMsg.type === 'CHAT') {
+                            setMessages(prev => [...prev, newMsg]);
+                            setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+                        }
+                        if (newMsg.type === 'STATUS_UPDATE') {
+                            setAssembly((prev: any) => ({ ...prev, status: newMsg.status }));
+                        }
+                    }
+                });
+            },
+            (error: any) => { 
+                console.error("Erro WebSocket:", error);
+                if (isMounted) {
+                    setConnected(false);
+                    setTimeout(connectWebSocket, 5000);
+                }
+            }
+        );
+    };
+
+    if (id && user) {
+        connectWebSocket();
+    }
+
+    return () => {
+        isMounted = false;
+        if (stompClient && stompClient.connected) {
+            stompClient.disconnect(() => console.log("Desconectado"));
+        }
+    };
+  }, [id, user]);
+
+  // --- 4. CARGA DE DADOS ---
+  useEffect(() => {
+    loadData();
+  }, [id]); // Carrega inicialmente pelo ID
+
   const loadData = async () => {
     if (!id) return;
+    
+    // 1. Carrega Assembleia
     try {
-        const [resAssembly, resChat] = await Promise.all([
-            api.get(`/assemblies/${id}`),
-            api.get(`/chat/assemblies/${id}`) // PERSISTÊNCIA: Carrega mensagens salvas no Banco
-        ]);
-        
+        const resAssembly = await api.get(`/assemblies/${id}`);
         setAssembly(resAssembly.data);
-        setMessages(resChat.data || []);
-        
-        if (resAssembly.data.auditLogs) {
-            setAuditLogs(resAssembly.data.auditLogs.slice(0, 15));
-        }
-
-        // Verificação de integridade de voto para o utilizador logado
-        if (resAssembly.data.votes && user) {
-            const foundVote = resAssembly.data.votes.find((v: any) => {
-                const vId = v.userId || (v.user && v.user.id);
-                return vId === user.id;
-            });
-            if (foundVote) {
-                setHasVoted(true);
-                setVoteReceipt(foundVote.id || foundVote.hash || 'AWS-S3-SIGNED-VOTE');
-            }
-        }
-
-        setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 500);
-    } catch (e: any) { 
-        console.error("Critical Sync Error:", e);
-        if (e.response?.status === 404) setErrorStatus("Assembleia não localizada no cluster.");
+    } catch (e) {
+        console.error("Erro ao carregar assembleia:", e);
     }
+
+    // 2. Carrega Chat (Independentemente do status da assembleia)
+    try {
+        const resChat = await api.get(`/chat/assemblies/${id}`);
+        setMessages(resChat.data || []);
+        setTimeout(() => chatEndRef.current?.scrollIntoView(), 500);
+    } catch (e) {
+        console.warn("Chat vazio ou erro:", e);
+        setMessages([]);
+    }
+  };
+
+  // --- 5. AÇÕES (VOTO, CHAT, GESTÃO) ---
+  
+  // Função que dispara o processo de voto
+  const handleVoteClick = () => {
+    if (!id || !selectedOption || !user) return;
+
+    console.log("DEBUG: Iniciando voto. Unidades disponíveis:", myUnits);
+    
+    // Se o morador tem mais de 1 unidade, perguntamos por quais ele quer votar
+    if (myUnits.length > 1) {
+        // Se a seleção temporária estiver vazia por algum motivo, preenche com todas
+        if (tempSelectedUnits.length === 0) setTempSelectedUnits(myUnits);
+        setShowUnitModal(true);
+    } else {
+        // Se só tem 1 unidade, vota direto
+        submitFinalVote(myUnits);
+    }
+  };
+
+  // Função que envia o voto real para o backend
+  const submitFinalVote = async (unitsToVote: string[]) => {
+    try {
+      if (unitsToVote.length === 0) {
+        alert("Selecione pelo menos uma unidade para votar.");
+        return;
+      }
+
+      if (!selectedOption) {
+        alert("Selecione uma opção para votar.");
+        return;
+      }
+
+      // PAYLOAD CORRIGIDO: Garante que os campos batam com o DTO Java
+      const payload = { 
+        optionId: selectedOption, 
+        userId: user?.id,
+        units: unitsToVote // Enviamos a lista de strings
+      };
+
+      console.log("Enviando Voto:", payload);
+
+      const response = await api.post(`/assemblies/${id}/vote`, payload);
+      
+      setHasVoted(true);
+      setVoteReceipt(response.data.id || 'CONFIRMADO-MULTI');
+      setShowUnitModal(false);
+      setTotalWeight(unitsToVote.length); // Atualiza o peso exibido
+      
+      alert(`Voto registrado com sucesso para ${unitsToVote.length} unidade(s)!`);
+      loadData(); // Recarrega para atualizar os contadores
+    } catch (e: any) { 
+        console.error("Erro ao votar:", e);
+        const errorMsg = e.response?.data?.message || e.response?.data?.error || "Erro desconhecido.";
+        alert("Erro ao votar: " + errorMsg); 
+    }
+  };
+
+  const handleSendChat = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatMsg.trim() || !user) return;
+
+    if (!stompClient || !stompClient.connected) {
+        alert("Conexão perdida. Aguarde a reconexão...");
+        return;
+    }
+
+    const chatDTO = {
+      senderName: user.nome || user.name || user.email,
+      content: chatMsg,
+      userId: user.id,
+      tenantId: user.tenantId, 
+      assemblyId: id,
+      type: 'CHAT'
+    };
+
+    try {
+        stompClient.send(`/app/chat/${id}/send`, {}, JSON.stringify(chatDTO));
+        setChatMsg('');
+    } catch (err) {
+        console.error("Erro envio msg:", err);
+    }
+  };
+
+  // --- FUNÇÕES DE GERENCIAMENTO (SÍNDICO) ---
+
+  const handleCloseAssembly = async () => {
+    if (!id || !window.confirm("ATENÇÃO: Isso encerrará a votação e gerará a Ata Jurídica. Confirmar?")) return;
+    setClosing(true);
+    try {
+        await api.patch(`/assemblies/${id}/close`); 
+        loadData();
+    } catch(e: any) {
+        alert("Erro: " + (e.response?.data?.message || e.message));
+    } finally {
+        setClosing(false);
+    }
+  };
+
+  const handleDeleteAssembly = async () => {
+      if(!id || !window.confirm("TEM CERTEZA? Isso apagará a assembleia e todo o histórico de votos e chat permanentemente. Esta ação não pode ser desfeita.")) return;
+      setDeleting(true);
+      try {
+          await api.delete(`/assemblies/${id}`);
+          alert("Assembleia excluída com sucesso.");
+          navigate('/assemblies');
+      } catch (error: any) {
+          alert("Erro ao excluir: " + (error.response?.data?.message || "Erro desconhecido"));
+          setDeleting(false);
+      }
+  };
+
+  const handleEditAssembly = () => {
+      // Redireciona para a tela de criação passando os dados atuais para edição
+      navigate('/create-assembly', { state: { assemblyData: assembly } });
+  };
+
+  const handleExportDossier = () => {
+      if(!id) return;
+      const apiUrl = (import.meta as any).env.VITE_API_URL || 'http://localhost:8080/api';
+      window.open(`${apiUrl}/assemblies/${id}/dossier`, '_blank');
+  };
+
+  // --- FUNÇÃO DE IMPRESSÃO PDF PERSONALIZADA ---
+  const handlePrintAta = () => {
+      if (!assembly || !ataPreview) return;
+
+      const cleanString = (str: string) => str ? str.replace(/[^a-zA-Z0-9]/g, '_') : 'Desconhecido';
+      
+      const assembleiaNome = cleanString(assembly.titulo || assembly.title);
+      const condominioNome = cleanString(assembly.tenant?.nome || 'Condominio');
+      
+      const fileName = `DossieJuridicoAssemblyVotzz_${assembleiaNome}_${condominioNome}`;
+
+      const printWindow = window.open('', '_blank', 'width=900,height=800');
+      
+      if (printWindow) {
+          printWindow.document.write(`
+            <html>
+            <head>
+                <title>${fileName}</title>
+                <style>
+                    body { font-family: 'Courier New', Courier, monospace; padding: 40px; line-height: 1.6; font-size: 12px; color: #000; max-width: 800px; margin: 0 auto; }
+                    .header { text-align: center; margin-bottom: 40px; border-bottom: 2px solid #000; padding-bottom: 20px; }
+                    .logo { font-weight: bold; font-size: 20px; margin-bottom: 10px; }
+                    .content { white-space: pre-wrap; text-align: justify; }
+                    .footer { margin-top: 50px; text-align: center; font-size: 10px; color: #666; border-top: 1px solid #ccc; padding-top: 10px; }
+                    @media print { body { -webkit-print-color-adjust: exact; } button { display: none; } }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="logo">Votzz - Sistema de Governança</div>
+                    <div>Registro Digital de Assembleia</div>
+                </div>
+                
+                <div class="content">${ataPreview}</div>
+
+                <div class="footer">
+                    Documento gerado eletronicamente em ${new Date().toLocaleString()} <br/>
+                    Válido para: ${assembly.tenant?.nome || 'Condomínio'} <br/>
+                    Hash de integridade do sistema Votzz.
+                </div>
+
+                <script>
+                    window.onload = function() {
+                        setTimeout(function() { window.print(); }, 500);
+                    }
+                </script>
+            </body>
+            </html>
+          `);
+          printWindow.document.close();
+      } else {
+          alert("Por favor, permita pop-ups para baixar o PDF.");
+      }
+  };
+
+  const handleSummarizeIA = () => {
+      if(!id) return;
+      setSummarizing(true);
+      const apiUrl = (import.meta as any).env.VITE_API_URL || 'http://localhost:8080/api';
+      window.open(`${apiUrl}/chat/assemblies/${id}/resumo-pdf`, '_blank');
+      setTimeout(() => setSummarizing(false), 2000);
   };
 
   const getYoutubeEmbedUrl = (url: string) => {
     if (!url) return "";
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|live\/)([^#\&\?]*).*/;
     const match = url.match(regExp);
-    return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : "";
+    if (match && match[2].length === 11) {
+        return `https://www.youtube.com/embed/${match[2]}`;
+    }
+    return "";
   };
 
-  // --- 8. HANDLERS ADMINISTRATIVOS (AWS BUCKET & SES GATEWAY) ---
+  if (!assembly) return <div className="p-20 text-center animate-pulse"><Clock className="w-12 h-12 mx-auto text-slate-300 mb-4 animate-spin"/><p className="text-slate-400 font-bold">Carregando sala...</p></div>;
 
-  const handleEditAssembly = () => {
-      navigate('/create-assembly', { state: { assemblyData: assembly } });
-  };
-
-  const handleDeleteAssembly = async () => {
-      if(!id || !window.confirm("ELIMINAR DEFINITIVAMENTE? Esta ação remove todos os dados do S3 e Banco.")) return;
-      setDeleting(true);
-      try { await api.delete(`/assemblies/${id}`); navigate('/assemblies'); } catch { setDeleting(false); }
-  };
-
-  /**
-   * handleClosePauta: Dispara o encerramento jurídico, guarda o log de chat no S3 e envia SES.
-   */
-  const handleClosePauta = async () => {
-    if (!id || !window.confirm("ENCERRAR VOTAÇÃO? A Ata Jurídica será lavrada no Bucket S3 e moradores serão notificados via AWS SES.")) return;
-    setClosing(true);
-    try { 
-      await api.patch(`/assemblies/${id}/close`); 
-      await loadData();
-      alert("Sessão finalizada. Ata arquivada na AWS Cloud.");
-    } catch (e: any) {
-      alert("Erro ao finalizar: " + (e.response?.data?.message || e.message));
-    } finally { setClosing(false); }
-  };
-
-  /**
-   * handleExportDossierAWS: Faz o download do Dossiê Jurídico armazenado no S3.
-   */
-  const handleExportDossierAWS = () => {
-      if(!id) return;
-      setExportingDossier(true);
-      const apiUrl = (import.meta as any).env.VITE_API_URL || 'http://localhost:8080/api';
-      window.open(`${apiUrl}/assemblies/${id}/dossier`, '_blank');
-      setTimeout(() => setExportingDossier(false), 2000);
-  };
-
-  /**
-   * handleIAAnalysis: Processa o chat persistido via Gemini Pro 1.5.
-   */
-  const handleIAAnalysis = () => {
-      if(!id) return;
-      setSummarizing(true);
-      const apiUrl = (import.meta as any).env.VITE_API_URL || 'http://localhost:8080/api';
-      window.open(`${apiUrl}/chat/assemblies/${id}/resumo-pdf`, '_blank');
-      setTimeout(() => setSummarizing(false), 3000);
-  };
-
-  const handlePrintAta = () => {
-      const printWindow = window.open('', '_blank', 'width=900,height=800');
-      if (printWindow) {
-          printWindow.document.write(`<html><body style="font-family:monospace;padding:50px;">${ataPreview}</body></html>`);
-          printWindow.document.close();
-          setTimeout(() => printWindow.print(), 500);
-      }
-  };
-
-  // --- 9. HANDLERS DE INTERAÇÃO DO USUÁRIO (VOTO E CHAT REAL-TIME) ---
-
-  const executeVoteApi = async (unitsToRegister: string[]) => {
-    if (!id || !user?.id) return;
-    try {
-      const payload = { 
-        optionId: selectedOption, 
-        userId: user.id, 
-        units: unitsToRegister,
-        timestamp: new Date().toISOString()
-      };
-      await api.post(`/assemblies/${id}/vote`, payload);
-      setHasVoted(true);
-      setShowUnitModal(false);
-      await loadData();
-      alert("Voto selado criptograficamente com sucesso.");
-    } catch (e: any) { alert("Erro de integridade: " + e.message); }
-  };
-
-  const handleVoteSubmission = () => {
-    if (!selectedOption) return;
-    if (myUnits.length > 1) setShowUnitModal(true);
-    else executeVoteApi(myUnits);
-  };
+  // Garante opções de voto (Sim/Não/Abstenção por padrão se vazio)
+  const votingOptions = assembly.options && assembly.options.length > 0 
+      ? assembly.options 
+      : [
+            { id: 'sim', descricao: 'Sim' },
+            { id: 'nao', descricao: 'Não' },
+            { id: 'abstencao', descricao: 'Abstenção' }
+        ];
 
   const toggleUnit = (unit: string) => {
-      setTempSelectedUnits(prev => prev.includes(unit) ? prev.filter(u => u !== unit) : [...prev, unit]);
+    setTempSelectedUnits(prev => prev.includes(unit) ? prev.filter(u => u !== unit) : [...prev, unit]);
   };
-
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatMsg.trim() || !user || !stompClient?.connected || !id) return;
-    const chatDTO = { 
-        senderName: user.nome || user.email, 
-        content: chatMsg, 
-        userId: user.id, 
-        tenantId: user.tenantId, 
-        assemblyId: id, 
-        type: 'CHAT',
-        timestamp: new Date().toISOString()
-    };
-    stompClient.send(`/app/chat/${id}/send`, {}, JSON.stringify(chatDTO));
-    setChatMsg('');
-  };
-
-  // --- 10. INITIAL SYNC EFFECTS ---
-  useEffect(() => {
-    if (user) {
-        const unitsFromUser = (user as any)?.unidadesList || (user?.unidade ? [user.unidade] : []);
-        if (unitsFromUser.length > 0) {
-            setMyUnits(unitsFromUser);
-            setTotalWeight(unitsFromUser.length);
-            setTempSelectedUnits(unitsFromUser);
-        } else {
-            setMyUnits(['UNIDADE PADRÃO']);
-        }
-    }
-  }, [user]);
-
-  useEffect(() => {
-    const start = async () => {
-        setLoadingInitial(true);
-        await loadData();
-        setLoadingInitial(false);
-    };
-    start();
-  }, [id]);
-
-  // --- 11. CLUSTER WEBSOCKET SYNC ---
-  useEffect(() => {
-    let isMounted = true;
-    const connectWebSocket = () => {
-        if (!id || !user || stompClient?.connected) return;
-        const socket = new SockJS((api.defaults.baseURL?.replace(/\/api$/, '') || '') + '/ws-votzz');
-        stompClient = over(socket);
-        stompClient.debug = null; 
-        stompClient.connect({}, () => { 
-            if (!isMounted) return;
-            setConnected(true);
-            stompClient.subscribe(`/topic/assembly/${id}`, (message: any) => {
-                const data = JSON.parse(message.body);
-                if (data.type === 'CHAT') {
-                    setMessages(prev => [...prev, data]);
-                    setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-                } else if (data.type === 'STATUS_UPDATE') {
-                    setAssembly((prev: any) => ({ ...prev, status: data.status }));
-                }
-            });
-        }, () => { if (isMounted) { setConnected(false); setTimeout(connectWebSocket, 5000); } });
-    };
-    connectWebSocket();
-    return () => { isMounted = false; if (stompClient?.connected) stompClient.disconnect(); };
-  }, [id, user]);
-
-  const votingOptions = useMemo(() => {
-    return assembly?.options?.length > 0 ? assembly.options : [
-        { id: 'sim', descricao: 'Sim' }, 
-        { id: 'nao', descricao: 'Não' },
-        { id: 'abstencao', descricao: 'Abstenção' }
-    ];
-  }, [assembly]);
-
-  if (loadingInitial) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950">
-        <Clock className="w-24 h-24 text-emerald-500 animate-spin mb-10" />
-        <h2 className="text-white font-black text-4xl uppercase tracking-[0.3em]">Votzz Governance</h2>
-        <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest">Sincronizando protocolos AWS S3/SES...</p>
-    </div>
-  );
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans selection:bg-emerald-100">
+    <div className="space-y-6 pb-20 p-4 md:p-6">
       
-      {/* ----------------------------------------------------------------------------
-          BARRA DE NAVEGAÇÃO SUPERIOR (ALTA DENSIDADE)
-          ---------------------------------------------------------------------------- */}
-      <nav className="bg-white/80 backdrop-blur-xl border-b border-slate-200 sticky top-0 z-[60] px-8 py-5 shadow-sm">
-          <div className="max-w-[1900px] mx-auto flex flex-col lg:flex-row justify-between items-center gap-6">
-              <div className="flex items-center gap-8">
-                  <button onClick={() => navigate('/assemblies')} className="p-4 bg-slate-100 hover:bg-slate-900 text-slate-500 hover:text-white rounded-[1.5rem] transition-all duration-500 group">
-                    <ArrowLeft size={28} className="group-hover:-translate-x-2 transition-transform"/>
-                  </button>
-                  <div className="h-14 w-[1.5px] bg-slate-200 hidden lg:block"></div>
-                  <div>
-                    <div className="flex items-center gap-3">
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${isClosed ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white animate-pulse'}`}>{isClosed ? 'ATA SELADA' : 'AUDIÊNCIA ATIVA'}</span>
-                        <h1 className="font-black text-3xl uppercase tracking-tighter text-slate-900 leading-none">{assembly.titulo}</h1>
+      <div className="flex justify-between items-center">
+        <button onClick={() => navigate('/assemblies')} className="flex items-center text-slate-500 hover:text-slate-800 transition-colors">
+            <ArrowLeft className="h-4 w-4 mr-1" /> Voltar para lista
+        </button>
+        {isManager && (
+            <div className="flex bg-slate-100 p-1 rounded-lg">
+                <button onClick={() => setActiveTab('VOTE')} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${activeTab === 'VOTE' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}>
+                  Sala de Votação
+                </button>
+                <button onClick={() => setActiveTab('MANAGE')} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${activeTab === 'MANAGE' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}>
+                  Gestão & Encerramento
+                </button>
+            </div>
+        )}
+      </div>
+
+      {activeTab === 'MANAGE' && isManager ? (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="bg-slate-900 text-white p-8 rounded-[2rem] shadow-xl relative overflow-hidden">
+                <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h2 className="text-2xl font-black flex items-center gap-2">
+                            <Gavel className="w-6 h-6 text-emerald-400" /> Painel Legal do Síndico
+                        </h2>
+                        <p className="text-slate-400 text-sm mt-1">Controle de quórum e formalização jurídica (Art. 1.354-A CC).</p>
                     </div>
-                    <p className="text-[10px] text-slate-400 font-black tracking-[0.2em] uppercase mt-2 flex items-center gap-2 leading-none">
-                        <Verified size={14} className="text-blue-500"/> SESSÃO SEGURA • ID: {assembly.id?.substring(0,8)} • BUCKET: {user?.tenantId?.substring(0,8)}
-                    </p>
-                  </div>
+                    <div className="flex items-center gap-3">
+                        <span className={`px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest ${isClosed ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white animate-pulse'}`}>
+                            {isClosed ? 'ENCERRADA' : 'EM ANDAMENTO'}
+                        </span>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8 relative z-10">
+                    <div className="bg-white/10 backdrop-blur-sm p-5 rounded-2xl border border-white/10">
+                        <p className="text-slate-400 text-[10px] uppercase font-black tracking-widest">Quórum (Unidades)</p>
+                        <p className="text-3xl font-black mt-1">{totalVotes} <span className="text-sm font-medium text-slate-400">presentes</span></p>
+                    </div>
+                    <div className="bg-white/10 backdrop-blur-sm p-5 rounded-2xl border border-white/10">
+                          <p className="text-slate-400 text-[10px] uppercase font-black tracking-widest">Fração Ideal Total</p>
+                          <p className="text-3xl font-black mt-1">{(totalFraction * 100).toFixed(2)}%</p>
+                    </div>
+                    <div className="bg-white/10 backdrop-blur-sm p-5 rounded-2xl border border-white/10">
+                          <p className="text-slate-400 text-[10px] uppercase font-black tracking-widest">Convocação</p>
+                          <p className="text-3xl font-black mt-1 text-emerald-400">100% <span className="text-sm font-medium text-slate-400">entregue</span></p>
+                    </div>
+                </div>
               </div>
-              
-              <div className="flex items-center gap-5">
-                  {isManager && (
-                    <div className="flex bg-slate-100 p-1.5 rounded-[1.8rem] border border-slate-200 shadow-inner">
-                        <button onClick={() => setActiveTab('VOTE')} className={`px-10 py-3 text-[11px] font-black rounded-[1.5rem] transition-all duration-500 ${activeTab === 'VOTE' ? 'bg-white shadow-2xl text-slate-900 scale-105' : 'text-slate-400 hover:text-slate-600'}`}>
-                           <Monitor size={16}/> AUDIÊNCIA
-                        </button>
-                        <button onClick={() => setActiveTab('MANAGE')} className={`px-10 py-3 text-[11px] font-black rounded-[1.5rem] transition-all duration-500 ${activeTab === 'MANAGE' ? 'bg-white shadow-2xl text-slate-900 scale-105' : 'text-slate-400 hover:text-slate-600'}`}>
-                           <Gavel size={16}/> GESTÃO LEGAL
+
+              <div className="grid grid-cols-1 gap-6">
+                  {!isClosed ? (
+                    <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm space-y-6">
+                        <h3 className="font-black text-lg text-slate-800 mb-2">Ações Administrativas</h3>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <button 
+                                onClick={handleEditAssembly} 
+                                className="w-full bg-amber-100 hover:bg-amber-200 text-amber-800 px-6 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all border border-amber-200"
+                            >
+                                <Edit className="w-5 h-5" /> Editar Dados
+                            </button>
+                            <button 
+                                onClick={handleDeleteAssembly} 
+                                disabled={deleting}
+                                className="w-full bg-red-100 hover:bg-red-200 text-red-800 px-6 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all border border-red-200"
+                            >
+                                {deleting ? 'Apagando...' : <><Trash2 className="w-5 h-5" /> Excluir Assembleia</>}
+                            </button>
+                        </div>
+
+                        <hr className="border-slate-100" />
+
+                        <div>
+                            <h4 className="font-bold text-slate-800 mb-2">Finalização</h4>
+                            <p className="text-sm text-slate-500 mb-4">Ao encerrar, o sistema calculará os votos ponderados pela fração ideal e gerará a Ata automaticamente.</p>
+                            <button onClick={handleCloseAssembly} disabled={closing} className="w-full bg-slate-800 hover:bg-slate-900 text-white px-6 py-4 rounded-xl font-black flex items-center justify-center gap-2 transition-all shadow-lg shadow-slate-200 disabled:opacity-50">
+                                {closing ? 'Processando...' : <><Lock className="w-5 h-5" /> Encerrar Votação e Lavrar Ata</>}
+                            </button>
+                        </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                        <div className="bg-emerald-50 p-6 rounded-[2rem] border border-emerald-100 shadow-sm flex items-center gap-4">
+                            <div className="bg-emerald-100 p-3 rounded-full">
+                                <CheckCircle className="w-6 h-6 text-emerald-600"/>
+                            </div>
+                            <div>
+                                <h3 className="font-black text-lg text-emerald-800">Ata Gerada com Sucesso</h3>
+                                <p className="text-sm text-emerald-600">A votação foi auditada e o documento oficial foi criado.</p>
+                            </div>
+                        </div>
+
+                        <div className="bg-white p-6 rounded-[1rem] shadow-inner border border-slate-200 font-mono text-xs leading-relaxed text-slate-700 overflow-y-auto max-h-96 whitespace-pre-wrap">
+                            {ataPreview}
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <button onClick={handlePrintAta} className="w-full bg-slate-800 text-white px-6 py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-900 transition-all shadow-lg">
+                                <FileText className="w-5 h-5" /> Baixar Ata (PDF)
+                            </button>
+                            <button onClick={handleExportDossier} className="w-full bg-slate-700 text-white px-6 py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-800 transition-all border border-slate-600">
+                                <Shield className="w-5 h-5" /> Exportar Dossiê Jurídico
+                            </button>
+                        </div>
+
+                        <button onClick={handleDeleteAssembly} className="w-full mt-4 text-red-500 hover:text-red-700 text-sm font-bold flex items-center justify-center gap-2">
+                            <Trash2 size={16}/> Apagar do Histórico
                         </button>
                     </div>
                   )}
-                  <div className={`px-5 py-2.5 rounded-full border font-black text-[10px] uppercase tracking-widest flex items-center gap-3 ${connected ? 'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-sm' : 'bg-red-50 text-red-600 border-red-100'}`}>
-                    <span className={`w-2.5 h-2.5 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></span>
-                    {connected ? 'SYNC ACTIVE' : 'OFFLINE MODE'}
-                  </div>
               </div>
           </div>
-      </nav>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-in fade-in">
+            
+            <div className="lg:col-span-8 space-y-6">
+                
+                {/* Header da Sala */}
+                <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex justify-between items-center">
+                    <div>
+                        <h1 className="text-2xl font-black text-slate-800">{assembly.titulo || assembly.title}</h1>
+                        <div className="flex items-center gap-3 mt-1">
+                            <span className="text-xs font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded uppercase tracking-wide">{assembly.type || assembly.tipoAssembleia}</span>
+                            <span className={`text-xs font-bold px-2 py-1 rounded uppercase tracking-wide ${isClosed ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                {isClosed ? 'Encerrada' : 'Aberta para Votos'}
+                            </span>
+                        </div>
+                    </div>
+                    <div className="flex flex-col items-end">
+                        <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest">
+                            {isSecret ? <><EyeOff size={14}/> Voto Secreto</> : <><Eye size={14}/> Voto Aberto</>}
+                        </div>
+                        {connected ? (
+                            <span className="text-[10px] font-black text-emerald-500 uppercase flex items-center gap-1 mt-1"><span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"/> Conectado</span>
+                        ) : (
+                            <span className="text-[10px] font-black text-red-500 uppercase flex items-center gap-1 mt-1"><span className="w-2 h-2 bg-red-500 rounded-full"/> Offline</span>
+                        )}
+                    </div>
+                </div>
 
-      <main className="max-w-[1900px] mx-auto p-4 md:p-10">
-        {activeTab === 'MANAGE' && isManager ? (
-          /* PAINEL ADMINISTRATIVO COMPLETO */
-          <div className="animate-in slide-in-from-bottom-8 duration-1000 space-y-12 pb-40">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                  <div className="bg-slate-900 text-white p-14 rounded-[4rem] shadow-2xl relative overflow-hidden group">
-                      <div className="absolute top-0 right-0 p-10 opacity-5 group-hover:rotate-12 transition-transform duration-1000"><Database size={200}/></div>
-                      <h4 className="text-slate-500 text-[11px] font-black uppercase tracking-[0.4em]">Quórum Absoluto</h4>
-                      <p className="text-9xl font-black mt-4 tracking-tighter leading-none">{totalVotesCount}</p>
-                      <p className="text-emerald-400 text-xs font-black pt-6 flex items-center gap-2 border-t border-white/5 uppercase tracking-widest"><Verified size={16}/> Unidades Identificadas</p>
-                  </div>
-                  <div className="bg-white p-14 rounded-[4rem] shadow-2xl border border-slate-100 flex flex-col justify-between group">
-                      <h4 className="text-slate-400 text-[11px] font-black uppercase tracking-[0.4em]">Peso da Massa</h4>
-                      <p className="text-6xl font-black text-slate-900 tracking-tighter">{(currentTotalFraction * 100).toFixed(4)}%</p>
-                      <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden mt-6 shadow-inner"><div className="bg-blue-600 h-full transition-all duration-1000" style={{width: `${Math.min(100, currentTotalFraction * 100)}%`}}></div></div>
-                  </div>
-                  <div className="bg-white p-14 rounded-[4rem] shadow-2xl border border-slate-100">
-                      <h4 className="text-slate-400 text-[11px] font-black uppercase tracking-[0.4em]">Monitoramento AWS</h4>
-                      <div className="mt-6 space-y-6">
-                        <div className="flex gap-4"><Activity className="text-blue-500"/><span className="text-[10px] font-black uppercase tracking-tighter">Bucket S3: ATIVO</span></div>
-                        <div className="flex gap-4"><Terminal className="text-emerald-500"/><span className="text-[10px] font-black uppercase tracking-tighter">SES Protocol: ATIVO</span></div>
-                      </div>
-                  </div>
-                  <div className="bg-indigo-600 text-white p-14 rounded-[4rem] shadow-2xl cursor-pointer hover:bg-indigo-700 transition-all group overflow-hidden" onClick={handleIAAnalysis}>
-                      <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-150 transition-transform"><Bot size={150}/></div>
-                      <Bot size={48} className="mb-4 group-hover:rotate-12 transition-transform relative z-10"/>
-                      <h4 className="text-2xl font-black uppercase leading-tight relative z-10">IA Gemini Pro</h4>
-                      <p className="text-[10px] font-bold text-indigo-200 mt-4 uppercase relative z-10">Exportar resumo do debate em PDF</p>
-                  </div>
-              </div>
+                {/* Transmissão ao Vivo */}
+                {assembly.youtubeLiveUrl ? (
+                    <div className="aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl border-4 border-slate-900 relative group">
+                        <iframe 
+                            width="100%" height="100%" 
+                            src={`${getYoutubeEmbedUrl(assembly.youtubeLiveUrl)}?autoplay=1&mute=0`} 
+                            title="Live" frameBorder="0" allowFullScreen
+                            className="absolute inset-0 w-full h-full"
+                        ></iframe>
+                    </div>
+                ) : (
+                    <div className="aspect-video bg-slate-100 rounded-[2rem] flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-200">
+                        <Video size={48} className="mb-4 opacity-20"/>
+                        <p className="font-bold">Nenhum link de transmissão configurado.</p>
+                    </div>
+                )}
 
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-                  <div className="lg:col-span-8 space-y-10">
-                      {!isClosed ? (
-                          <div className="bg-white p-12 lg:p-24 rounded-[6rem] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.1)] border border-slate-100 space-y-16">
-                              <h3 className="text-5xl font-black text-slate-900 tracking-tighter uppercase leading-none">Gestão da Assembleia</h3>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
-                                  <button onClick={handleEditAssembly} className="p-12 bg-slate-50 text-slate-700 rounded-[3rem] font-black border-4 border-slate-100 hover:bg-white hover:border-blue-500 transition-all flex flex-col items-center gap-6 group">
-                                      <div className="p-5 bg-white rounded-3xl group-hover:scale-110 transition-transform shadow-lg"><Edit size={48} className="text-amber-500"/></div>
-                                      REVISAR PAUTA
-                                  </button>
-                                  <button onClick={handleDeleteAssembly} disabled={deleting} className="p-12 bg-red-50 text-red-700 rounded-[3rem] font-black border-4 border-red-100 hover:bg-white hover:border-red-500 transition-all flex flex-col items-center gap-6 group">
-                                      <div className="p-5 bg-white rounded-3xl group-hover:scale-110 transition-transform shadow-lg"><Trash2 size={48}/></div>
-                                      ELIMINAR SALA
-                                  </button>
-                              </div>
-                              <div className="bg-slate-950 p-16 rounded-[4rem] text-center shadow-2xl relative overflow-hidden group">
-                                  <Lock className="mx-auto text-emerald-500 mb-10 group-hover:scale-110 transition-transform" size={80}/>
-                                  <h4 className="text-white text-3xl font-black uppercase tracking-tight">Finalização Jurídica</h4>
-                                  <p className="text-slate-400 mb-12 max-w-md mx-auto">Este comando congela o chat no banco e salva a ata no S3.</p>
-                                  <button onClick={handleClosePauta} disabled={closing} className="w-full bg-emerald-500 text-slate-950 p-10 rounded-[3rem] font-black text-3xl hover:bg-emerald-400 transition-all shadow-2xl uppercase tracking-tighter">{closing ? 'GERANDO PDF...' : 'ENCERRAR AGORA'}</button>
-                              </div>
-                          </div>
-                      ) : (
-                          <div className="bg-white p-16 lg:p-24 rounded-[6rem] shadow-2xl border space-y-12 animate-in zoom-in-95">
-                              <div className="flex items-center gap-10">
-                                  <div className="bg-emerald-500 p-10 rounded-[3rem] text-slate-900 shadow-2xl"><Award size={60}/></div>
-                                  <h3 className="text-6xl font-black text-slate-900 tracking-tighter uppercase leading-none">Sessão Auditada</h3>
-                              </div>
-                              <div className="bg-slate-950 p-12 rounded-[4rem] font-mono text-emerald-400/80 max-h-[400px] overflow-y-auto whitespace-pre-wrap leading-relaxed shadow-inner custom-scrollbar">{ataPreview}</div>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-10">
-                                  <button onClick={handlePrintAta} className="bg-slate-900 text-white p-10 rounded-[3rem] font-black text-2xl flex items-center justify-center gap-6 shadow-2xl hover:bg-black transition-all group"><Printer size={32}/> IMPRIMIR</button>
-                                  <button onClick={handleExportDossierAWS} disabled={exportingDossier} className="bg-emerald-500 text-slate-950 p-10 rounded-[3rem] font-black text-2xl flex items-center justify-center gap-6 shadow-2xl hover:bg-emerald-400 transition-all group">
-                                      {exportingDossier ? <Clock className="animate-spin" size={32}/> : <DownloadCloud size={40}/>} 
-                                      DOSSIÊ AWS S3
-                                  </button>
-                              </div>
-                          </div>
-                      )}
-                  </div>
-                  <div className="lg:col-span-4 bg-white p-10 rounded-[4rem] shadow-2xl border border-slate-100 flex flex-col h-full min-h-[600px]">
-                      <h3 className="font-black text-slate-900 text-2xl tracking-tighter flex items-center gap-4 mb-12"><History className="text-emerald-500" size={32}/> Auditoria Live</h3>
-                      <div className="space-y-10 flex-1 overflow-y-auto custom-scrollbar pr-4">
-                        {messages.length === 0 ? <p className="text-center text-slate-300 font-black py-20 uppercase text-xs">Sem eventos...</p> : messages.slice(-20).map((m, i) => (
-                            <div key={i} className="flex gap-6 border-l-4 border-emerald-500 pl-6 py-2 animate-in slide-in-from-right duration-500 hover:bg-slate-50 transition-colors rounded-r-xl">
-                                <div className="space-y-1">
-                                    <p className="text-xs font-black uppercase text-slate-800">{m.senderName}</p>
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase truncate max-w-[200px]">{m.content}</p>
-                                    <p className="text-[9px] font-mono text-emerald-500 font-black mt-2">{new Date(m.timestamp || Date.now()).toLocaleTimeString()}</p>
+                {/* Descrição e Anexos */}
+                <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
+                    <h3 className="text-slate-400 font-black uppercase text-xs tracking-widest mb-4 flex items-center gap-2"><FileText size={16}/> Pauta Oficial</h3>
+                    <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap">
+                        {assembly.description}
+                    </div>
+                    
+                    {assembly.anexoUrl && (
+                        <div className="mt-8 pt-6 border-t border-slate-100">
+                            <h4 className="text-xs font-black text-slate-400 uppercase mb-3">Documentos Anexos</h4>
+                            <a href={assembly.anexoUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors group">
+                                <div className="bg-white p-2 rounded-lg border border-slate-200 text-red-500"><FileText size={20}/></div>
+                                <span className="font-bold text-slate-700 text-sm group-hover:text-blue-600">Documento da Assembleia (PDF)</span>
+                                <Download size={16} className="ml-auto text-slate-400"/>
+                            </a>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            <div className="lg:col-span-4 space-y-6">
+                
+                {/* Cédula de Votação */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 sticky top-6">
+                    <h3 className="text-lg font-bold text-slate-800 mb-2 flex items-center">
+                        <Lock className="h-5 w-5 mr-2 text-emerald-600" />
+                        Cédula de Votação
+                    </h3>
+
+                    <div className="bg-slate-50 p-3 rounded-lg mb-4 border border-slate-200">
+                        <p className="text-xs text-slate-500 uppercase font-bold mb-1 flex justify-between">
+                            <span>Seu Poder de Voto</span>
+                            {/* MOSTRA O TOTAL DE UNIDADES AQUI */}
+                            {totalWeight > 1 && <span className="text-emerald-600 flex items-center gap-1"><Layers size={10}/> {totalWeight} Unidades</span>}
+                        </p>
+                        
+                        <div className="flex flex-wrap gap-1 mb-2">
+                            {myUnits.map((u, i) => (
+                                <span key={i} className="text-[10px] bg-white border px-1.5 py-0.5 rounded text-slate-600 font-mono">{u}</span>
+                            ))}
+                        </div>
+
+                        <div className="flex justify-between items-center border-t border-slate-200 pt-2">
+                            <span className="text-sm font-medium text-slate-700">Fração Total:</span>
+                            <span className="bg-emerald-100 text-emerald-800 text-xs px-2 py-1 rounded font-bold flex items-center">
+                                <Scale className="w-3 h-3 mr-1" /> {(myTotalFraction * 100).toFixed(4)}%
+                            </span>
+                        </div>
+                    </div>
+
+                    {isSecret ? (
+                        <div className="flex items-center text-xs text-purple-700 bg-purple-50 p-2 rounded mb-4">
+                            <EyeOff className="w-3 h-3 mr-1" /> Votação Secreta.
+                        </div>
+                    ) : (
+                        <div className="flex items-center text-xs text-blue-700 bg-blue-50 p-2 rounded mb-4">
+                            <Eye className="w-3 h-3 mr-1" /> Voto Aberto.
+                        </div>
+                    )}
+
+                    {hasVoted ? (
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-center">
+                            <div className="h-12 w-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                <CheckIcon className="h-6 w-6 text-emerald-600" />
+                            </div>
+                            <h4 className="font-bold text-emerald-900">Voto Confirmado</h4>
+                            <p className="text-sm text-emerald-700 mt-1 mb-3">Obrigado por participar.</p>
+                            <div className="text-xs bg-white p-2 rounded border border-emerald-100 text-slate-500 break-all font-mono">
+                                Receipt: {voteReceipt}
+                            </div>
+                        </div>
+                    ) : isClosed ? (
+                        <div className="bg-slate-100 border border-slate-200 rounded-lg p-4 text-center text-slate-500">
+                            <Lock className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                            <p className="font-bold">Votação Encerrada</p>
+                        </div>
+                    ) : canVote ? (
+                        <div className="space-y-3">
+                            {votingOptions.map((opt: any) => (
+                                <button
+                                    key={opt.id || opt.descricao}
+                                    onClick={() => setSelectedOption(opt.id || opt.descricao)}
+                                    className={`w-full text-left px-4 py-3 rounded-lg border transition-all ${
+                                        selectedOption === (opt.id || opt.descricao)
+                                        ? 'border-emerald-500 ring-1 ring-emerald-500 bg-emerald-50 text-emerald-900' 
+                                        : 'border-slate-200 hover:border-slate-300 text-slate-700'
+                                    }`}
+                                >
+                                    <span className="font-medium">{opt.descricao || opt.label}</span>
+                                </button>
+                            ))}
+                            <button
+                                onClick={handleVoteClick}
+                                disabled={!selectedOption}
+                                className="w-full mt-6 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold py-3 rounded-lg shadow-md transition-colors"
+                            >
+                                {myUnits.length > 1 ? 'Selecionar Unidades & Confirmar' : 'Confirmar Voto Seguro'}
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="text-center p-6 bg-slate-50 rounded-2xl border border-slate-200 text-slate-400">
+                            <Shield className="mx-auto mb-2 opacity-50" size={32}/>
+                            <p className="font-bold text-sm">Apenas moradores habilitados podem votar.</p>
+                        </div>
+                    )}
+                    
+                    <div className="mt-6 pt-6 border-t border-slate-100">
+                        <div className="flex items-start text-xs text-slate-500">
+                            <FileCheck className="h-4 w-4 mr-2 flex-shrink-0 text-slate-400" />
+                            <p>Em conformidade com Art. 1.354-A do CC. Hash auditável e imutável.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-[2rem] border shadow-lg overflow-hidden flex flex-col h-[500px]">
+                    <div className="p-4 bg-slate-50 border-b flex justify-between items-center">
+                        <span className="font-black text-slate-700 flex items-center gap-2"><MessageSquare size={18}/> Chat</span>
+                        <div className="flex items-center gap-1">
+                            <span className={`w-2 h-2 rounded-full ${isClosed ? 'bg-red-500' : 'bg-emerald-500 animate-pulse'}`}></span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">{isClosed ? 'Histórico' : 'Ao Vivo'}</span>
+                        </div>
+                    </div>
+                    
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/30">
+                        {messages.length === 0 && <div className="text-center mt-20 opacity-30"><MessageSquare size={48} className="mx-auto mb-2"/><p className="font-bold text-xs">Nenhuma mensagem.</p></div>}
+                        {messages.map((m, idx) => (
+                            <div key={idx} className={`flex flex-col ${m.userId === user?.id ? 'items-end' : 'items-start'}`}>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase">{m.senderName}</span>
+                                    <span className="text-[9px] text-slate-300">{new Date(m.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                </div>
+                                <div className={`p-3 rounded-2xl max-w-[90%] text-sm shadow-sm ${m.userId === user?.id ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none'}`}>
+                                    {m.content}
                                 </div>
                             </div>
                         ))}
-                      </div>
-                  </div>
-              </div>
-          </div>
-        ) : (
-          /* VISÃO CONDÔMINO (ALTA FIDELIDADE) */
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 animate-in fade-in duration-1000 pb-40">
-              <div className="lg:col-span-8 space-y-12">
-                  {/* LIVE STREAM INTEGRADA */}
-                  <div className={`aspect-video bg-slate-950 rounded-[5rem] overflow-hidden shadow-2xl ring-[20px] transition-all duration-1000 relative group active:scale-[0.995] ${isHoveringVideo ? 'ring-emerald-500/10' : 'ring-white'}`} onMouseEnter={() => setIsHoveringVideo(true)} onMouseLeave={() => setIsHoveringVideo(false)}>
-                      {assembly.youtubeLiveUrl ? (
-                          <iframe width="100%" height="100%" src={`${getYoutubeEmbedUrl(assembly.youtubeLiveUrl)}?autoplay=1&mute=0&rel=0&showinfo=0`} title="Live" frameBorder="0" allowFullScreen className="absolute inset-0 w-full h-full scale-[1.005]"></iframe>
-                      ) : (
-                          <div className="flex flex-col items-center justify-center h-full text-slate-700 bg-slate-900"><Monitor size={140} className="opacity-10 animate-pulse"/><p className="font-black uppercase tracking-[0.6em] text-sm opacity-30 mt-6 leading-none">Aguardando Transmissão</p></div>
-                      )}
-                      <div className="absolute top-12 left-12"><div className="bg-red-600 text-white px-6 py-2.5 rounded-full text-[12px] font-black uppercase tracking-[0.3em] flex items-center gap-3 shadow-2xl animate-pulse"><div className="w-2.5 h-2.5 bg-white rounded-full"></div> LIVE</div></div>
-                  </div>
+                        <div ref={chatEndRef} />
+                    </div>
 
-                  {/* PAUTA & AWS S3 DOWNLOADS */}
-                  <div className="bg-white p-16 lg:p-24 rounded-[6rem] border shadow-2xl space-y-16 relative overflow-hidden group">
-                      <div className="space-y-10 relative z-10">
-                          <div className="flex items-center gap-6"><div className="w-20 h-2 bg-emerald-500 rounded-full shadow-lg"></div><h3 className="text-slate-400 font-black uppercase text-xs tracking-[0.5em]">Edital e Pauta Deliberativa</h3></div>
-                          <div className="prose prose-slate max-w-none text-slate-800 leading-[1.8] text-3xl font-black tracking-tighter whitespace-pre-wrap selection:bg-emerald-100">{assembly.description}</div>
-                      </div>
-                      
-                      <div className="pt-20 border-t-2 space-y-10 relative z-10">
-                          <h4 className="text-slate-900 text-3xl font-black tracking-tighter uppercase leading-none">Repositório Digital AWS S3</h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                              {/* ANEXO DA PAUTA (S3) */}
-                              {assembly.anexoUrl ? (
-                                  <a href={assembly.anexoUrl} target="_blank" rel="noreferrer" download className="flex items-center gap-8 p-12 bg-slate-50 border-2 rounded-[4rem] hover:bg-blue-600 transition-all group shadow-lg hover:-translate-y-4 active:scale-95">
-                                      <div className="bg-white p-8 rounded-[2rem] border-2 border-slate-100 text-blue-600 shadow-xl group-hover:scale-110 transition-all duration-500 group-hover:rotate-12"><DownloadCloud size={48}/></div>
-                                      <div className="flex-1 space-y-1"><span className="block font-black text-slate-900 text-2xl tracking-tighter group-hover:text-white uppercase leading-none">Baixar Anexo</span><span className="text-[11px] text-blue-500 font-black uppercase block group-hover:text-blue-100 tracking-widest mt-2">Nuvem AWS S3</span></div>
-                                      <Download size={32} className="text-slate-400 group-hover:text-white transition-all"/>
-                                  </a>
-                              ) : (
-                                  <div className="flex items-center gap-8 p-12 bg-slate-50 border-4 border-dashed rounded-[4rem] opacity-30 group"><FileSearch size={48}/><span className="font-black text-slate-400 uppercase text-2xl tracking-tighter group-hover:translate-x-2 transition-all">Sem Anexos</span></div>
-                              )}
+                    <form onSubmit={handleSendChat} className="p-3 bg-white border-t flex gap-2 items-center">
+                        <input 
+                            value={chatMsg} 
+                            onChange={e => setChatMsg(e.target.value)} 
+                            placeholder={isClosed ? "O chat foi encerrado." : "Escreva sua mensagem..."}
+                            className="flex-1 bg-slate-100 border-none rounded-xl px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500 transition-all disabled:opacity-70" 
+                            disabled={isClosed}
+                        />
+                        <button type="submit" disabled={!chatMsg.trim() || !connected || isClosed} className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-lg shadow-blue-200">
+                            <Send size={18}/>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+      )}
 
-                              {/* DOSSIÊ JURÍDICO (S3) - BOTÃO LIBERADO PARA TODOS SE ENCERRADA */}
-                              {isClosed ? (
-                                  <button onClick={handleExportDossierAWS} disabled={exportingDossier} className="flex items-center gap-8 p-12 bg-slate-900 border-4 rounded-[4rem] hover:bg-black transition-all duration-700 group shadow-2xl hover:-translate-y-4 active:scale-95">
-                                      <div className="bg-emerald-500 p-8 rounded-[2rem] text-slate-950 shadow-2xl group-hover:rotate-12 transition-all">{exportingDossier ? <Clock className="animate-spin" size={48}/> : <Award size={48}/>}</div>
-                                      <div className="text-left flex-1 space-y-1"><span className="block font-black text-white text-2xl tracking-tighter uppercase leading-none uppercase">Dossiê Votzz</span><span className="text-[11px] text-emerald-500 font-black uppercase mt-2 block tracking-widest leading-none">Auditória Final AWS</span></div>
-                                      <Download size={32} className="text-slate-600 group-hover:text-white transition-all"/>
-                                  </button>
-                              ) : (
-                                  <div className="flex items-center gap-8 p-12 bg-slate-100 border-4 border-dashed rounded-[4rem] opacity-30 group relative overflow-hidden transition-all duration-1000">
-                                      <Lock size={48} className="text-slate-400"/><span className="font-black text-slate-400 uppercase text-2xl tracking-tighter group-hover:translate-x-4 transition-transform duration-700">Dossiê Seguro</span>
-                                      <div className="absolute inset-0 bg-slate-900/95 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all p-8 text-center text-white font-black text-xs uppercase tracking-widest leading-relaxed">Este documento é selado na AWS S3 imediatamente após o encerramento das deliberações.</div>
-                                  </div>
-                              )}
-                          </div>
-                      </div>
-                  </div>
-              </div>
-
-              <div className="lg:col-span-4 space-y-16">
-                  {/* CÉDULA DE VOTO */}
-                  <div className="bg-white rounded-[5rem] shadow-2xl border border-slate-100 p-14 sticky top-28 ring-1 ring-slate-100 z-40 transition-all duration-700 hover:shadow-indigo-500/10 active:scale-[0.99]">
-                      <div className="flex items-center justify-between mb-12">
-                        <h3 className="text-4xl font-black text-slate-950 tracking-tighter flex items-center gap-5 uppercase leading-none"><Lock className="text-emerald-500" size={40} /> Cédula</h3>
-                        {hasVoted && <div className="bg-emerald-500 text-white px-6 py-2.5 rounded-[1.5rem] text-[11px] font-black uppercase shadow-2xl border-b-4 border-emerald-700 animate-in zoom-in-95">VOTO SELADO</div>}
-                      </div>
-
-                      <div className="bg-slate-900 p-8 rounded-[3rem] mb-10 border border-white/5 space-y-8 shadow-2xl relative overflow-hidden group">
-                          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 transition-all"><Scale size={150}/></div>
-                          <div className="flex justify-between items-center text-[10px] font-black text-slate-500 uppercase tracking-[0.4em] relative z-10"><span>Poder de Representação</span><Award size={20} className="text-blue-400"/></div>
-                          <div className="flex flex-wrap gap-3 relative z-10">
-                              {myUnits.map((u, i) => <div key={i} className="bg-white/5 border-2 border-white/5 px-6 py-2.5 rounded-2xl text-[12px] font-black text-white shadow-xl flex items-center gap-3 hover:bg-white/10 transition-all shadow-inner"><Landmark size={14} className="text-emerald-500"/> {u}</div>)}
-                          </div>
-                          <div className="pt-8 border-t border-white/10 flex justify-between items-center relative z-10">
-                              <span className="text-[11px] font-black text-slate-500 uppercase tracking-widest text-left leading-none">Fração Acumulada:</span>
-                              <span className="bg-blue-600 text-white px-6 py-2.5 rounded-[1.5rem] text-[15px] font-black shadow-xl">{(userTotalFraction * 100).toFixed(4)}%</span>
-                          </div>
-                      </div>
-
-                      {hasVoted ? (
-                          <div className="bg-emerald-50 border-4 border-emerald-100 rounded-[4.5rem] p-16 text-center animate-in zoom-in duration-700 shadow-2xl shadow-emerald-500/5 relative overflow-hidden group">
-                              <div className="absolute top-0 right-0 p-10 opacity-[0.03] group-hover:rotate-45 transition-transform duration-[2s]"><Verified size={250}/></div>
-                              <div className="relative mx-auto mb-14">
-                                <div className="h-40 w-40 bg-emerald-500/10 rounded-[3rem] flex items-center justify-center mx-auto border-8 border-white shadow-2xl relative z-10 animate-in bounce-in-95 duration-1000 group-hover:scale-110 transition-transform">
-                                    <Verified className="h-20 w-20 text-emerald-500" />
-                                </div>
-                                <div className="absolute inset-0 bg-emerald-400 rounded-full blur-[100px] opacity-40 animate-pulse"></div>
-                              </div>
-                              <h4 className="font-black text-emerald-950 text-4xl uppercase tracking-tighter leading-none">Deliberação Concluída</h4>
-                              <p className="text-emerald-700 mt-6 font-bold text-lg leading-relaxed">Sua participação foi selada criptograficamente no cluster AWS Votzz.</p>
-                              <div className="mt-12 p-10 bg-white rounded-[3.5rem] border-2 border-emerald-100 shadow-inner overflow-hidden">
-                                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mb-4">Assinatura Digital de Voto</p>
-                                  <p className="text-[9px] text-slate-500 break-all font-mono leading-tight text-left uppercase bg-slate-50 p-6 rounded-3xl border">{voteReceipt}</p>
-                              </div>
-                              <button onClick={() => window.print()} className="mt-10 flex items-center justify-center gap-3 mx-auto text-[11px] font-black text-emerald-600 uppercase tracking-widest hover:underline active:scale-95 transition-all"><Printer size={16}/> Imprimir Recibo</button>
-                          </div>
-                      ) : isClosed ? (
-                          <div className="bg-slate-100 border-4 border-slate-200 rounded-[4.5rem] p-20 text-center text-slate-400 animate-in fade-in duration-1000 shadow-inner"><Lock className="h-24 w-24 mx-auto mb-10 opacity-5 animate-bounce" /><h4 className="font-black uppercase tracking-[0.5em] text-sm opacity-30 leading-none">Pauta Concluída</h4><p className="text-[10px] font-bold mt-4 uppercase tracking-widest leading-none">Sessão selada no banco S3.</p></div>
-                      ) : canVote ? (
-                          /* INTERFACE DE VOTO ATIVO (ULTRA PREMIUM) */
-                          <div className="space-y-8 animate-in slide-in-from-right-8 duration-700">
-                              <div className="space-y-5">
-                                {votingOptions.map((opt: any) => (
-                                    <button key={opt.id || opt.descricao} onClick={() => setSelectedOption(opt.id || opt.descricao)} className={`w-full text-left p-10 rounded-[2.5rem] border-4 transition-all duration-500 font-black uppercase text-xl tracking-tighter flex justify-between items-center group active:scale-[0.98] ${selectedOption === (opt.id || opt.descricao) ? 'border-emerald-500 bg-emerald-50 text-emerald-950 shadow-2xl ring-4 ring-emerald-500/10' : 'border-slate-50 hover:border-slate-300 text-slate-400 hover:text-slate-700 hover:bg-white hover:shadow-2xl'}`}>
-                                        <span className="flex items-center gap-6"><div className={`w-10 h-10 rounded-2xl border-4 flex items-center justify-center transition-all ${selectedOption === (opt.id || opt.descricao) ? 'bg-emerald-500 border-emerald-500 shadow-2xl scale-110' : 'bg-white border-slate-100'}`}>{selectedOption === (opt.id || opt.descricao) && <CheckCircle className="text-white" size={24}/>}</div> {opt.descricao || opt.label}</span>
-                                        <ChevronRight className={`transition-all duration-500 ${selectedOption === (opt.id || opt.descricao) ? 'translate-x-2 text-emerald-500' : 'opacity-0'}`} size={32}/>
-                                    </button>
-                                ))}
-                              </div>
-                              <div className="pt-4">
-                                <button onClick={handleVoteClick} disabled={!selectedOption} className="w-full bg-slate-900 hover:bg-black disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-10 rounded-[3rem] shadow-[0_40px_80px_-15px_rgba(0,0,0,0.3)] transition-all duration-700 uppercase tracking-[0.4em] text-sm hover:-translate-y-2 active:scale-95 flex items-center justify-center gap-6 group relative overflow-hidden">
-                                    <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-1000"></div>
-                                    {myUnits.length > 1 ? <><Layers size={24} className="group-hover:rotate-12 transition-transform duration-700"/> VALIDAR EM LOTE</> : <><Shield size={24} className="group-hover:rotate-[360deg] transition-transform duration-[1.5s]"/> AUTENTICAR VOTO SEGURO</>}
-                                </button>
-                                <div className="flex flex-col items-center gap-3 mt-10 opacity-30 grayscale"><div className="flex gap-4"><Shield size={14}/><Scale size={14}/><HardDrive size={14}/><Database size={14}/></div><p className="text-[9px] font-black uppercase tracking-widest">Protocolo Votzz-Gov AWS Stack Active</p></div>
-                              </div>
-                          </div>
-                      ) : (
-                          <div className="text-center p-16 bg-slate-50 rounded-[5rem] border-4 border-slate-100 text-slate-400 space-y-10 shadow-inner"><ShieldAlert className="mx-auto opacity-10" size={100}/><p className="font-black text-sm uppercase tracking-tighter text-slate-600 leading-tight">Acesso Identificado</p><p className="text-[10px] font-bold uppercase tracking-widest max-w-[200px] mx-auto leading-relaxed">Sua conta não possui unidades habilitadas para voto neste condomínio.</p><button className="bg-white border text-slate-600 px-10 py-4 rounded-[2rem] text-[10px] font-black uppercase hover:shadow-xl transition-all">Solicitar Suporte</button></div>
-                      )}
-                  </div>
-
-                  {/* CHAT REAL-TIME MESA DIRETORA (PERSISTÊNCIA AWS S3) */}
-                  <div className="bg-white rounded-[4.5rem] border border-slate-100 shadow-[0_60px_100px_-30px_rgba(0,0,0,0.12)] overflow-hidden flex flex-col h-[850px] ring-1 ring-slate-100 transition-all duration-1000 hover:shadow-indigo-500/10">
-                      <div className="p-10 bg-slate-50 border-b border-slate-100 flex justify-between items-center relative overflow-hidden">
-                          <div className="flex items-center gap-5 relative z-10"><div className="bg-slate-900 p-4 rounded-[1.5rem] shadow-2xl text-white group cursor-help transition-all hover:scale-110 active:scale-95 active:rotate-12 duration-700"><MessageSquare size={28}/></div><div><span className="font-black text-slate-900 uppercase text-lg tracking-tighter block leading-none uppercase">Mesa Diretora</span><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 block leading-none">Diálogos Persistidos na Cloud</span></div></div>
-                          <div className="flex flex-col items-end gap-1.5 relative z-10"><div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${isClosed ? 'bg-red-50 text-red-500 border border-red-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100 animate-pulse'}`}>{isClosed ? 'SESSÃO FECHADA' : 'NETWORK SYNC ACTIVE'}</div></div>
-                      </div>
-                      <div className="flex-1 overflow-y-auto p-10 space-y-12 bg-gradient-to-b from-slate-50 via-white to-slate-50 custom-scrollbar scroll-smooth">
-                          {messages.length === 0 && <div className="h-full flex flex-col items-center justify-center opacity-[0.05] grayscale space-y-8"><Monitor size={150}/><p className="font-black uppercase text-xs tracking-[0.6em] text-center max-w-[200px] leading-loose">Aguardando interações da pauta...</p></div>}
-                          {messages.map((m, idx) => (
-                              <div key={idx} className={`flex flex-col ${m.userId === user?.id ? 'items-end' : 'items-start'} animate-in slide-in-from-bottom-10 duration-700 group/msg`}>
-                                  <div className={`flex items-center gap-4 mb-4 px-5 ${m.userId === user?.id ? 'flex-row-reverse' : ''}`}><div className={`w-12 h-12 rounded-[1.2rem] flex items-center justify-center font-black text-xs text-white shadow-lg group-hover/msg:scale-110 transition-transform ${m.userId === user?.id ? 'bg-slate-900' : 'bg-indigo-600'}`}>{m.senderName.substring(0,2).toUpperCase()}</div><div className="flex flex-col space-y-1"><span className={`text-[11px] font-black uppercase tracking-tight text-slate-800 ${m.userId === user?.id ? 'text-right' : ''}`}>{m.senderName}</span><span className={`text-[8px] text-slate-400 font-bold uppercase tracking-widest ${m.userId === user?.id ? 'text-right' : ''}`}>{new Date(m.timestamp || Date.now()).toLocaleTimeString()}</span></div></div>
-                                  <div className={`p-8 rounded-[3rem] max-w-[95%] text-[15px] font-semibold leading-[1.7] shadow-[0_20px_40px_-15px_rgba(0,0,0,0.08)] transition-all duration-500 hover:shadow-2xl active:scale-[0.99] ${m.userId === user?.id ? 'bg-slate-900 text-white rounded-tr-none shadow-slate-300 border-none hover:bg-black hover:-translate-x-2' : 'bg-white border border-slate-100 text-slate-700 rounded-tl-none hover:translate-x-2'}`}>{m.content}</div>
-                                  <div className="mt-2 px-6 flex items-center gap-2 opacity-0 group-hover/msg:opacity-50 transition-opacity"><Database size={10}/><span className="text-[7px] font-black uppercase tracking-widest">Saved in S3 Archive</span></div>
-                              </div>
-                          ))}
-                          <div ref={chatEndRef} className="h-6 w-full" />
-                      </div>
-                      <form onSubmit={handleSendMessage} className="p-10 bg-white border-t-2 border-slate-50 flex gap-5 items-center relative z-10 shadow-[0_-20px_50px_rgba(0,0,0,0.02)]">
-                          <input value={chatMsg} onChange={e => setChatMsg(e.target.value)} placeholder={isClosed ? "Audiência encerrada pela mesa." : "Manifeste sua opinião oficial aqui..."} className="w-full bg-slate-50 border-2 border-transparent rounded-[2.5rem] px-10 py-7 text-[15px] font-black outline-none focus:ring-[12px] focus:ring-blue-600/5 focus:bg-white focus:border-blue-500 transition-all duration-500 disabled:opacity-50 placeholder:text-slate-300 shadow-inner" disabled={isClosed}/>
-                          <button type="submit" disabled={!chatMsg.trim() || !connected || isClosed} className="p-8 bg-blue-600 text-white rounded-[2.5rem] hover:bg-blue-700 disabled:opacity-10 transition-all duration-700 shadow-[0_20px_40px_rgba(37,99,235,0.4)] flex-shrink-0 active:scale-90 group relative overflow-hidden hover:scale-105 active:rotate-2 shadow-xl shadow-blue-500/40"><div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div><Send size={32} className="relative z-10 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform duration-500"/></button>
-                      </form>
-                  </div>
-              </div>
-          </div>
-        )}
-      </main>
-
-      {/* MODAL DE SELEÇÃO DE UNIDADES CPF-BASED (VOTO PONDERADO) */}
+      {/* MODAL DE SELEÇÃO DE UNIDADES (APARECE SE TIVER > 1 UNIDADE) */}
       {showUnitModal && (
-        <div className="fixed inset-0 bg-slate-950/98 z-[300] flex items-center justify-center p-6 backdrop-blur-[40px] animate-in fade-in duration-700">
-          <div className="bg-white rounded-[6rem] p-16 lg:p-24 max-w-2xl w-full shadow-[0_100px_250px_-50px_rgba(0,0,0,0.6)] border border-slate-100 animate-in zoom-in-95 duration-700 relative overflow-hidden">
-            <div className="absolute -top-40 -left-40 w-96 h-96 bg-emerald-500/10 rounded-full blur-[120px] animate-pulse"></div>
-            <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-blue-500/10 rounded-full blur-[120px] animate-pulse" style={{animationDelay: '1s'}}></div>
-            <div className="flex justify-between items-center mb-16 relative z-10"><div className="space-y-2"><div className="flex items-center gap-6"><Layers className="text-emerald-500" size={50} /><h3 className="text-5xl font-black text-slate-950 uppercase tracking-tighter leading-none uppercase">Suas Unidades</h3></div><p className="text-[11px] text-slate-400 font-black tracking-[0.4em] uppercase ml-[74px]">Verificação de Voto Ponderado CPF-SECURE</p></div><button onClick={() => setShowUnitModal(false)} className="bg-slate-100 p-5 rounded-full hover:rotate-180 transition-all shadow-inner hover:text-red-500 hover:bg-red-50 active:scale-90"><X size={40} /></button></div>
-            <div className="bg-blue-600 p-10 rounded-[3rem] mb-12 flex items-center gap-8 relative z-10 shadow-2xl shadow-blue-500/30 group/alert hover:-translate-y-1 transition-transform duration-700"><div className="bg-white p-5 rounded-[1.8rem] text-blue-600 shadow-2xl flex-shrink-0 animate-bounce-slow group-hover/alert:rotate-12 transition-transform"><Info size={32}/></div><p className="text-blue-50 font-black text-lg uppercase tracking-tight leading-tight uppercase">Selecione quais das unidades vinculadas ao seu registro irão votar agora: <span className="bg-blue-400 text-white px-3 py-1 rounded-xl ml-2 font-black shadow-lg">{selectedOption}</span></p></div>
-            <div className="space-y-5 mb-16 max-h-[500px] overflow-y-auto pr-6 custom-scrollbar relative z-10 px-4">
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl border border-slate-100 scale-in-center">
+            <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                    <Layers className="text-emerald-600" /> Unidades
+                </h3>
+                <button onClick={() => setShowUnitModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                    <X size={20} />
+                </button>
+            </div>
+            
+            <p className="text-sm text-slate-500 mb-6 font-medium text-center">Você possui múltiplas unidades. Selecione por quais deseja votar agora:</p>
+            
+            <div className="space-y-2 mb-8 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
               {myUnits.map(unit => (
-                <label key={unit} className={`flex items-center gap-10 p-10 rounded-[3.5rem] border-4 transition-all duration-1000 cursor-pointer group relative overflow-hidden shadow-sm active:scale-95 ${tempSelectedUnits.includes(unit) ? 'border-emerald-500 bg-emerald-50 shadow-2xl shadow-emerald-500/10 scale-[1.02]' : 'border-slate-50 hover:bg-slate-50 hover:border-slate-200 hover:translate-x-2'}`}>
-                  {tempSelectedUnits.includes(unit) && <div className="absolute top-0 right-0 p-5"><Verified size={24} className="text-emerald-500 animate-in zoom-in spin-in-90 duration-[1.5s]"/></div>}
-                  <div className={`w-14 h-14 rounded-[1.5rem] border-4 flex items-center justify-center transition-all duration-700 shadow-xl ${tempSelectedUnits.includes(unit) ? 'bg-emerald-500 border-emerald-500 scale-110 shadow-emerald-200' : 'bg-white border-slate-100 group-hover:border-slate-300 shadow-inner'}`}>{tempSelectedUnits.includes(unit) && <CheckCircle className="text-white" size={32}/>}</div>
-                  <input type="checkbox" className="hidden" checked={tempSelectedUnits.includes(unit)} onChange={() => toggleUnit(unit)}/>
-                  <div className="flex-1 space-y-2"><span className={`font-black uppercase text-3xl tracking-tighter transition-colors duration-1000 leading-none ${tempSelectedUnits.includes(unit) ? 'text-emerald-950' : 'text-slate-900'}`}>{unit}</span><div className="flex gap-3"><Scale size={14} className="text-slate-300"/><p className="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em] group-hover:text-slate-600 transition-colors">Fração Individual de Poder: {baseFraction}</p></div></div>
+                <label key={unit} className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all cursor-pointer ${tempSelectedUnits.includes(unit) ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100 hover:bg-slate-50'}`}>
+                  <input 
+                    type="checkbox" 
+                    checked={tempSelectedUnits.includes(unit)}
+                    onChange={() => {
+                        toggleUnit(unit);
+                    }}
+                    className="w-5 h-5 text-emerald-600 rounded-lg border-slate-300 focus:ring-emerald-500"
+                  />
+                  <span className="font-bold text-slate-700">{unit}</span>
                 </label>
               ))}
             </div>
-            <div className="space-y-6 relative z-10 pt-10 border-t-4 border-slate-50">
-              <button onClick={() => executeVoteApi(tempSelectedUnits)} disabled={tempSelectedUnits.length === 0} className="w-full bg-slate-950 text-white font-black py-12 rounded-[3.5rem] shadow-[0_40px_80px_rgba(0,0,0,0.4)] hover:bg-black disabled:opacity-10 transition-all duration-[1s] uppercase tracking-[0.5em] text-sm flex items-center justify-center gap-6 group scale-in-center active:scale-90 border-b-[16px] border-black/40 hover:border-emerald-500/20 active:translate-y-4 shadow-2xl animate-in slide-in-from-bottom-5"><div className="bg-white/10 p-4 rounded-[1.2rem] group-hover:bg-emerald-500 transition-all group-hover:rotate-[360deg] duration-[1.5s] shadow-xl"><Zap size={32}/></div> AUTENTICAR {tempSelectedUnits.length} VOTO(S) PONDERADO(S)</button>
-              <button onClick={() => setShowUnitModal(false)} className="w-full text-slate-400 font-black py-2 hover:text-red-500 transition-all duration-500 text-center text-[10px] uppercase tracking-[0.4em] active:scale-90 hover:scale-110">Anular Protocolo e Retornar</button>
+
+            <div className="space-y-3">
+              <button 
+                onClick={() => submitFinalVote(tempSelectedUnits)}
+                disabled={tempSelectedUnits.length === 0}
+                className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl shadow-xl hover:bg-slate-800 disabled:opacity-30 transition-all flex items-center justify-center gap-2"
+              >
+                Confirmar {tempSelectedUnits.length} Voto(s)
+              </button>
+              <button onClick={() => setShowUnitModal(false)} className="w-full text-slate-400 font-bold py-2 hover:text-slate-600 transition-colors text-center">Cancelar</button>
             </div>
           </div>
         </div>
       )}
-
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 12px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 100px; border: 4px solid transparent; background-clip: content-box; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; border: 4px solid transparent; background-clip: content-box; }
-        @keyframes bounce-slow { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-15px) rotate(5deg); } }
-        .animate-bounce-slow { animation: bounce-slow 4s infinite ease-in-out; }
-        @media print { .no-print, header, button, form, nav, .sticky, aside { display: none !important; } main { margin: 0 !important; padding: 0 !important; } .shadow-2xl, .shadow-xl, .shadow-lg { box-shadow: none !important; border: 1px solid #eee !important; box-shadow: none !important; } .rounded-[6rem], .rounded-[5rem], .rounded-[4rem], .rounded-[3rem] { border-radius: 0 !important; } .text-white, .text-slate-400 { color: black !important; } }
-        .scroll-smooth { scroll-behavior: smooth; }
-        @keyframes scale-in-center { 0% { transform: scale(0.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
-        .scale-in-center { animation: scale-in-center 0.6s cubic-bezier(0.250, 0.460, 0.450, 0.940) both; }
-      `}</style>
     </div>
   );
 };
 
 const CheckIcon = ({className}: {className?: string}) => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="20 6 9 17 4 12" /></svg>
-);
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+)
 
 export default VotingRoom;
