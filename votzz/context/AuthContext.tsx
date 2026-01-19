@@ -32,23 +32,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const processLoginData = (data: LoginResponse) => {
-      // LÓGICA DE UNIFICAÇÃO: Tenta pegar o nome do Tenant/Condomínio da resposta
-      // O backend deve enviar 'tenantName' ou um objeto 'tenant' com 'nome'
+      // Pega o ID do Tenant de forma segura
+      const tenantId = data.tenantId || (data as any).tenant?.id || null;
+      
+      // Tenta pegar o nome do Tenant/Condomínio da resposta
       const tenantData = (data as any).tenant || null;
       const tenantName = (data as any).tenantName || (tenantData ? tenantData.nome : null);
 
       const userToSave: User = {
-        id: data.id || 'temp',
+        // CORREÇÃO: Removido o 'temp'. Se não houver ID, o backend deve tratar no login.
+        id: data.id, 
         nome: data.nome || '',
         name: data.nome || '',
         email: data.email || '',
         role: data.role as any,
-        tenantId: data.tenantId,
+        tenantId: tenantId,
         
-        // Salvamos o tenant com o nome correto para o Dashboard usar
-        tenant: tenantData ? { ...tenantData, nome: tenantName } : (tenantName ? { id: data.tenantId!, nome: tenantName } : undefined),
+        // Salvamos o tenant unificado
+        tenant: tenantData ? { ...tenantData, nome: tenantName } : (tenantName ? { id: tenantId!, nome: tenantName } : undefined),
         
-        // Propriedade auxiliar direta (opcional, facilita leitura)
         // @ts-ignore
         tenantName: tenantName,
 
@@ -58,7 +60,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         block: data.bloco,
         unit: data.unidade,
-        whatsapp: ''
+        whatsapp: (data as any).whatsapp || ''
       };
 
       setUser(userToSave);
