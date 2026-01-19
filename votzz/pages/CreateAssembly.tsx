@@ -1,15 +1,20 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Sparkles, Calendar, Type, FileText, ArrowLeft, Loader2, Video, Eye, EyeOff, Upload } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Sparkles, Calendar, Type, FileText, ArrowLeft, Loader2, Video, Eye, EyeOff, Upload, Save } from 'lucide-react';
 import { generateAssemblyDescription } from '../services/geminiService';
 import api from '../services/api'; 
 import { VoteType, VotePrivacy } from '../types';
 
 const CreateAssembly: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [loadingAi, setLoadingAi] = useState(false);
   const [saving, setSaving] = useState(false);
   const [attachment, setAttachment] = useState<File | null>(null);
+  
+  // Estado para edição
+  const editingAssembly = location.state?.assemblyData;
+  const isEditing = !!editingAssembly;
 
   const [formData, setFormData] = useState({
     title: '',
@@ -20,8 +25,27 @@ const CreateAssembly: React.FC = () => {
     youtubeLiveUrl: '', 
     quorumType: 'SIMPLE',
     voteType: VoteType.YES_NO_ABSTAIN,
-    votePrivacy: VotePrivacy.OPEN
+    votePrivacy: VotePrivacy.OPEN,
+    anexoUrl: ''
   });
+
+  // Preenche dados se for edição
+  useEffect(() => {
+    if (editingAssembly) {
+        setFormData({
+            title: editingAssembly.titulo || editingAssembly.title || '',
+            description: editingAssembly.description || '',
+            startDate: editingAssembly.dataInicio || editingAssembly.startDate || '',
+            endDate: editingAssembly.dataFim || editingAssembly.endDate || '',
+            type: editingAssembly.tipoAssembleia || editingAssembly.type || 'AGE',
+            youtubeLiveUrl: editingAssembly.youtubeLiveUrl || '',
+            quorumType: editingAssembly.quorumType || 'SIMPLE',
+            voteType: editingAssembly.voteType || VoteType.YES_NO_ABSTAIN,
+            votePrivacy: editingAssembly.votePrivacy || VotePrivacy.OPEN,
+            anexoUrl: editingAssembly.anexoUrl || ''
+        });
+    }
+  }, [editingAssembly]);
 
   const handleAiGenerate = async () => {
     if (!formData.title) return alert("Digite um título para o tema primeiro.");
@@ -42,14 +66,41 @@ const CreateAssembly: React.FC = () => {
     }
   };
 
+  const uploadToS3 = async (file: File): Promise<string> => {
+      // Cria o FormData para envio
+      const formDataUpload = new FormData();
+      formDataUpload.append('file', file);
+      
+      // Chama endpoint do backend (Ex: /api/uploads/assemblies)
+      // Ajuste a rota conforme seu Backend Controller de upload
+      const res = await api.post('/uploads/assemblies', formDataUpload, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      return res.data.url; // Retorna a URL do S3
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     
     try {
-        let anexoUrl = '';
+        let finalAnexoUrl = formData.anexoUrl;
+
+        // Se tiver novo arquivo, faz upload primeiro
         if (attachment) {
-            anexoUrl = 'https://storage.votzz.com/attachment.pdf'; 
+            try {
+                // Se não tiver endpoint de upload ainda, use o hardcoded para testes
+                // finalAnexoUrl = await uploadToS3(attachment);
+                
+                // MOCK TEMPORÁRIO CASO NÃO TENHA O ENDPOINT DE UPLOAD AINDA:
+                console.log("Arquivo detectado (Simulando Upload S3)...");
+                finalAnexoUrl = "https://votzz-storage.s3.amazonaws.com/mock-ata-exemplo.pdf"; 
+            } catch (uErr) {
+                console.error("Erro upload:", uErr);
+                alert("Erro ao fazer upload do arquivo. Tente novamente.");
+                setSaving(false);
+                return;
+            }
         }
 
         let voteOptions = [
@@ -72,19 +123,24 @@ const CreateAssembly: React.FC = () => {
             quorumType: formData.quorumType,
             voteType: formData.voteType,
             votePrivacy: formData.votePrivacy,
-            status: 'AGENDADA', // PADRONIZADO PARA CAIR NA PASTA "EM ANDAMENTO"
-            anexoUrl: anexoUrl,
-            options: voteOptions
+            status: isEditing ? editingAssembly.status : 'AGENDADA',
+            anexoUrl: finalAnexoUrl,
+            options: isEditing ? undefined : voteOptions // Não sobrescreve opções na edição para não perder votos
         };
 
-        console.log("Enviando Payload:", payload);
-        await api.post('/assemblies', payload);
-        alert("Assembleia lançada com sucesso!");
+        if (isEditing) {
+            await api.put(`/assemblies/${editingAssembly.id}`, payload);
+            alert("Assembleia atualizada com sucesso!");
+        } else {
+            await api.post('/assemblies', payload);
+            alert("Assembleia lançada com sucesso!");
+        }
+        
         navigate('/assemblies'); 
         
     } catch (err: any) {
-        console.error("Erro na criação:", err.response?.data || err);
-        alert("Erro ao criar: " + (err.response?.data?.error || "Verifique o console"));
+        console.error("Erro na operação:", err.response?.data || err);
+        alert("Erro: " + (err.response?.data?.error || "Verifique os dados e tente novamente."));
     } finally {
         setSaving(false);
     }
@@ -98,7 +154,9 @@ const CreateAssembly: React.FC = () => {
 
       <div className="bg-white rounded-3xl shadow-xl border border-slate-100 p-8 md:p-12">
         <div className="mb-8">
-          <h1 className="text-3xl font-black text-slate-900 tracking-tighter">Nova Assembleia Digital</h1>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tighter">
+              {isEditing ? 'Editar Assembleia' : 'Nova Assembleia Digital'}
+          </h1>
           <p className="text-slate-500 mt-2">Configure a pauta, anexos e a transmissão ao vivo.</p>
         </div>
 
@@ -134,7 +192,10 @@ const CreateAssembly: React.FC = () => {
             </div>
 
             <div className="col-span-2">
-                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Anexar Documento (PDF)</label>
+                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">
+                    Anexar Documento (PDF)
+                    {formData.anexoUrl && <span className="ml-2 text-emerald-500 font-normal normal-case">- Arquivo atual já salvo</span>}
+                </label>
                 <div className="relative">
                     <input 
                         type="file" 
@@ -196,6 +257,7 @@ const CreateAssembly: React.FC = () => {
                 value={formData.voteType}
                 onChange={e => setFormData({...formData, voteType: e.target.value as VoteType})}
                 className="w-full px-4 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-emerald-500 font-bold text-slate-700"
+                disabled={isEditing} // Evita mudar tipo de voto na edição para não quebrar dados
               >
                 <option value={VoteType.YES_NO_ABSTAIN}>Sim / Não / Abstenção</option>
                 <option value={VoteType.MULTIPLE_CHOICE}>Múltipla Escolha</option>
@@ -221,9 +283,9 @@ const CreateAssembly: React.FC = () => {
           </div>
 
           <div className="pt-6 border-t border-slate-50 flex gap-4">
-            <button type="button" onClick={() => navigate('/dashboard')} className="flex-1 py-4 border-2 border-slate-100 rounded-2xl text-slate-500 font-bold">Descartar</button>
-            <button type="submit" disabled={saving} className="flex-[2] py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xl shadow-xl transition-all">
-              {saving ? <Loader2 className="animate-spin h-6 w-6 mx-auto" /> : 'Lançar Assembleia'}
+            <button type="button" onClick={() => navigate('/assemblies')} className="flex-1 py-4 border-2 border-slate-100 rounded-2xl text-slate-500 font-bold">Cancelar</button>
+            <button type="submit" disabled={saving} className="flex-[2] py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xl shadow-xl transition-all flex justify-center items-center gap-2">
+              {saving ? <Loader2 className="animate-spin h-6 w-6" /> : <><Save size={20}/> {isEditing ? 'Salvar Alterações' : 'Lançar Assembleia'}</>}
             </button>
           </div>
         </form>

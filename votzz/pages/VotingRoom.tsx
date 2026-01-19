@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  ArrowLeft, MessageSquare, FileCheck, Shield, Video, Send, Lock, Clock, FileText, CheckCircle, Gavel, Scale, Download, Eye, EyeOff, Layers, X
+  ArrowLeft, MessageSquare, FileCheck, Shield, Video, Send, Lock, Clock, FileText, CheckCircle, Gavel, Scale, Download, Eye, EyeOff, Layers, X, Trash2, Edit
 } from 'lucide-react';
 import api from '../services/api'; 
 import { useAuth } from '../context/AuthContext';
@@ -16,51 +16,55 @@ const VotingRoom: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   
-  // Estados de Dados
+  // --- ESTADOS DE DADOS ---
   const [assembly, setAssembly] = useState<any>(null);
   const [hasVoted, setHasVoted] = useState(false);
   const [voteReceipt, setVoteReceipt] = useState<string | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   
-  // --- NOVA LÓGICA: MULTI-UNIDADES ---
+  // --- ESTADOS: MULTI-UNIDADES ---
   // Inicializa com array vazio para evitar undefined no primeiro render
   const [myUnits, setMyUnits] = useState<string[]>([]);
   const [totalWeight, setTotalWeight] = useState(1); 
 
-  // Estados de Controle do Modal de Unidades
+  // --- ESTADOS DE CONTROLE DE UI ---
   const [showUnitModal, setShowUnitModal] = useState(false);
   const [tempSelectedUnits, setTempSelectedUnits] = useState<string[]>([]);
-
-  // Estados de UI
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [chatMsg, setChatMsg] = useState('');
   const [connected, setConnected] = useState(false);
   const [activeTab, setActiveTab] = useState<'VOTE' | 'MANAGE'>('VOTE');
-  const [closing, setClosing] = useState(false);
   
-  // Estado que estava faltando
+  // Estados de Loading/Processamento
+  const [closing, setClosing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [summarizing, setSummarizing] = useState(false); 
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   
-  // Permissões e Status
+  // --- PERMISSÕES E STATUS ---
   const isManager = user?.role === 'MANAGER' || user?.role === 'SINDICO' || user?.role === 'ADM_CONDO' || user?.role === 'ADMIN';
   const isSecret = assembly?.votePrivacy === 'SECRET';
-  const isClosed = assembly?.status === 'CLOSED' || assembly?.status === 'ENCERRADA';
+  
+  // Normalização do Status para verificar se está fechada
+  const isClosed = useMemo(() => {
+      const s = (assembly?.status || '').toUpperCase();
+      return ['CLOSED', 'ENCERRADA', 'FINALIZADA', 'HISTORICO'].includes(s);
+  }, [assembly]);
 
-  // Regra de Voto
-  const canVote = (user?.role === 'MORADOR') || (user?.role === 'SINDICO') || user?.role === 'ADM_CONDO';
+  // Regra de Voto: Quem pode votar?
+  const canVote = (user?.role === 'MORADOR') || (user?.role === 'SINDICO') || (user?.role === 'ADM_CONDO');
 
-  // Estatísticas
+  // --- ESTATÍSTICAS (Cálculo Dinâmico) ---
   const totalVotes = assembly?.votes?.length || 0;
-  // Fração Base (do usuário logado)
+  // Fração Base (do usuário logado - padrão se não vier do backend)
   const userFraction = (user as any)?.fraction || 0.0152; 
-  // Fração Total da Assembleia (considerando todos os votos)
+  // Fração Total da Assembleia (soma simples para visualização)
   const totalFraction = totalVotes * userFraction; 
   // Fração Total do Usuário (considerando suas múltiplas unidades)
   const myTotalFraction = userFraction * totalWeight;
 
-  // --- CORREÇÃO F5: Sincroniza Unidades e Voto quando o User carregar ---
+  // --- 1. SINCRONIZAÇÃO INICIAL (User + Unidades) ---
   useEffect(() => {
     if (user) {
         // Tenta pegar a lista vinda do login (backend AuthDTOs atualizado)
@@ -106,7 +110,7 @@ const VotingRoom: React.FC = () => {
       }
   };
 
-  // --- LÓGICA DE CÁLCULO DA ATA ---
+  // --- 2. LÓGICA DE CÁLCULO DA ATA (PREVIEW) ---
   const ataPreview = useMemo(() => {
     if (!assembly) return '';
 
@@ -123,7 +127,8 @@ const VotingRoom: React.FC = () => {
 
     // 2. Contabiliza os votos dinamicamente comparando IDs
     const results = activeOptions.map((opt: any) => {
-        const count = votes.filter((v: any) => v.optionId === opt.id).length;
+        // Correção: Compara tanto ID quanto descrição para compatibilidade
+        const count = votes.filter((v: any) => v.optionId === opt.id || v.optionId === opt.descricao).length;
         // Cálculo de % da fração ideal (opcional, mas legal na ata)
         const fractionPercent = ((count * userFraction) * 100).toFixed(4);
         return {
@@ -184,7 +189,7 @@ ________________________________________________
 Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
   }, [assembly, totalVotes, totalFraction]);
 
-  // --- 1. CONEXÃO WEBSOCKET ---
+  // --- 3. CONEXÃO WEBSOCKET ---
   useEffect(() => {
     let isMounted = true;
 
@@ -244,7 +249,7 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
     };
   }, [id, user]);
 
-  // --- 2. CARGA DE DADOS ---
+  // --- 4. CARGA DE DADOS ---
   useEffect(() => {
     loadData();
   }, [id]); // Carrega inicialmente pelo ID
@@ -256,13 +261,11 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
     try {
         const resAssembly = await api.get(`/assemblies/${id}`);
         setAssembly(resAssembly.data);
-        
-        // A verificação de voto foi movida para o useEffect unificado acima
-        // para garantir sincronia com o user.
     } catch (e) {
         console.error("Erro ao carregar assembleia:", e);
     }
 
+    // 2. Carrega Chat (Independentemente do status da assembleia)
     try {
         const resChat = await api.get(`/chat/assemblies/${id}`);
         setMessages(resChat.data || []);
@@ -273,10 +276,10 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
     }
   };
 
-  // --- 3. AÇÕES ---
+  // --- 5. AÇÕES (VOTO, CHAT, GESTÃO) ---
   
   // Função que dispara o processo de voto
-  const handleVote = () => {
+  const handleVoteClick = () => {
     if (!id || !selectedOption || !user) return;
 
     console.log("DEBUG: Iniciando voto. Unidades disponíveis:", myUnits);
@@ -300,11 +303,21 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
         return;
       }
 
-      const response = await api.post(`/assemblies/${id}/vote`, { 
+      if (!selectedOption) {
+        alert("Selecione uma opção para votar.");
+        return;
+      }
+
+      // PAYLOAD CORRIGIDO: Garante que os campos batam com o DTO Java
+      const payload = { 
         optionId: selectedOption, 
         userId: user?.id,
         units: unitsToVote // Enviamos a lista de strings
-      });
+      };
+
+      console.log("Enviando Voto:", payload);
+
+      const response = await api.post(`/assemblies/${id}/vote`, payload);
       
       setHasVoted(true);
       setVoteReceipt(response.data.id || 'CONFIRMADO-MULTI');
@@ -312,9 +325,11 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
       setTotalWeight(unitsToVote.length); // Atualiza o peso exibido
       
       alert(`Voto registrado com sucesso para ${unitsToVote.length} unidade(s)!`);
-      loadData(); 
+      loadData(); // Recarrega para atualizar os contadores
     } catch (e: any) { 
-        alert("Erro ao votar: " + (e.response?.data?.message || "Tente novamente.")); 
+        console.error("Erro ao votar:", e);
+        const errorMsg = e.response?.data?.message || e.response?.data?.error || "Erro desconhecido.";
+        alert("Erro ao votar: " + errorMsg); 
     }
   };
 
@@ -344,6 +359,8 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
     }
   };
 
+  // --- FUNÇÕES DE GERENCIAMENTO (SÍNDICO) ---
+
   const handleCloseAssembly = async () => {
     if (!id || !window.confirm("ATENÇÃO: Isso encerrará a votação e gerará a Ata Jurídica. Confirmar?")) return;
     setClosing(true);
@@ -355,6 +372,24 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
     } finally {
         setClosing(false);
     }
+  };
+
+  const handleDeleteAssembly = async () => {
+      if(!id || !window.confirm("TEM CERTEZA? Isso apagará a assembleia e todo o histórico de votos e chat permanentemente. Esta ação não pode ser desfeita.")) return;
+      setDeleting(true);
+      try {
+          await api.delete(`/assemblies/${id}`);
+          alert("Assembleia excluída com sucesso.");
+          navigate('/assemblies');
+      } catch (error: any) {
+          alert("Erro ao excluir: " + (error.response?.data?.message || "Erro desconhecido"));
+          setDeleting(false);
+      }
+  };
+
+  const handleEditAssembly = () => {
+      // Redireciona para a tela de criação passando os dados atuais para edição
+      navigate('/create-assembly', { state: { assemblyData: assembly } });
   };
 
   const handleExportDossier = () => {
@@ -382,42 +417,12 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
             <head>
                 <title>${fileName}</title>
                 <style>
-                    body {
-                        font-family: 'Courier New', Courier, monospace;
-                        padding: 40px;
-                        line-height: 1.6;
-                        font-size: 12px;
-                        color: #000;
-                        max-width: 800px;
-                        margin: 0 auto;
-                    }
-                    .header {
-                        text-align: center;
-                        margin-bottom: 40px;
-                        border-bottom: 2px solid #000;
-                        padding-bottom: 20px;
-                    }
-                    .logo {
-                        font-weight: bold;
-                        font-size: 20px;
-                        margin-bottom: 10px;
-                    }
-                    .content {
-                        white-space: pre-wrap;
-                        text-align: justify;
-                    }
-                    .footer {
-                        margin-top: 50px;
-                        text-align: center;
-                        font-size: 10px;
-                        color: #666;
-                        border-top: 1px solid #ccc;
-                        padding-top: 10px;
-                    }
-                    @media print {
-                        body { -webkit-print-color-adjust: exact; }
-                        button { display: none; }
-                    }
+                    body { font-family: 'Courier New', Courier, monospace; padding: 40px; line-height: 1.6; font-size: 12px; color: #000; max-width: 800px; margin: 0 auto; }
+                    .header { text-align: center; margin-bottom: 40px; border-bottom: 2px solid #000; padding-bottom: 20px; }
+                    .logo { font-weight: bold; font-size: 20px; margin-bottom: 10px; }
+                    .content { white-space: pre-wrap; text-align: justify; }
+                    .footer { margin-top: 50px; text-align: center; font-size: 10px; color: #666; border-top: 1px solid #ccc; padding-top: 10px; }
+                    @media print { body { -webkit-print-color-adjust: exact; } button { display: none; } }
                 </style>
             </head>
             <body>
@@ -436,9 +441,7 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
 
                 <script>
                     window.onload = function() {
-                        setTimeout(function() {
-                            window.print();
-                        }, 500);
+                        setTimeout(function() { window.print(); }, 500);
                     }
                 </script>
             </body>
@@ -537,12 +540,34 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
 
               <div className="grid grid-cols-1 gap-6">
                   {!isClosed ? (
-                    <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
-                        <h3 className="font-black text-lg text-slate-800 mb-2">Ações Críticas</h3>
-                        <p className="text-sm text-slate-500 mb-6">Ao encerrar, o sistema calculará os votos ponderados pela fração ideal e gerará a Ata automaticamente.</p>
-                        <button onClick={handleCloseAssembly} disabled={closing} className="w-full bg-red-600 hover:bg-red-700 text-white px-6 py-4 rounded-xl font-black flex items-center justify-center gap-2 transition-all shadow-lg shadow-red-100 disabled:opacity-50">
-                            {closing ? 'Processando...' : <><Lock className="w-5 h-5" /> Encerrar Votação e Lavrar Ata</>}
-                        </button>
+                    <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm space-y-6">
+                        <h3 className="font-black text-lg text-slate-800 mb-2">Ações Administrativas</h3>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <button 
+                                onClick={handleEditAssembly} 
+                                className="w-full bg-amber-100 hover:bg-amber-200 text-amber-800 px-6 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all border border-amber-200"
+                            >
+                                <Edit className="w-5 h-5" /> Editar Dados
+                            </button>
+                            <button 
+                                onClick={handleDeleteAssembly} 
+                                disabled={deleting}
+                                className="w-full bg-red-100 hover:bg-red-200 text-red-800 px-6 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all border border-red-200"
+                            >
+                                {deleting ? 'Apagando...' : <><Trash2 className="w-5 h-5" /> Excluir Assembleia</>}
+                            </button>
+                        </div>
+
+                        <hr className="border-slate-100" />
+
+                        <div>
+                            <h4 className="font-bold text-slate-800 mb-2">Finalização</h4>
+                            <p className="text-sm text-slate-500 mb-4">Ao encerrar, o sistema calculará os votos ponderados pela fração ideal e gerará a Ata automaticamente.</p>
+                            <button onClick={handleCloseAssembly} disabled={closing} className="w-full bg-slate-800 hover:bg-slate-900 text-white px-6 py-4 rounded-xl font-black flex items-center justify-center gap-2 transition-all shadow-lg shadow-slate-200 disabled:opacity-50">
+                                {closing ? 'Processando...' : <><Lock className="w-5 h-5" /> Encerrar Votação e Lavrar Ata</>}
+                            </button>
+                        </div>
                     </div>
                   ) : (
                     <div className="space-y-6">
@@ -568,6 +593,10 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                                 <Shield className="w-5 h-5" /> Exportar Dossiê Jurídico
                             </button>
                         </div>
+
+                        <button onClick={handleDeleteAssembly} className="w-full mt-4 text-red-500 hover:text-red-700 text-sm font-bold flex items-center justify-center gap-2">
+                            <Trash2 size={16}/> Apagar do Histórico
+                        </button>
                     </div>
                   )}
               </div>
@@ -577,6 +606,7 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
             
             <div className="lg:col-span-8 space-y-6">
                 
+                {/* Header da Sala */}
                 <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex justify-between items-center">
                     <div>
                         <h1 className="text-2xl font-black text-slate-800">{assembly.titulo || assembly.title}</h1>
@@ -599,6 +629,7 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                     </div>
                 </div>
 
+                {/* Transmissão ao Vivo */}
                 {assembly.youtubeLiveUrl ? (
                     <div className="aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl border-4 border-slate-900 relative group">
                         <iframe 
@@ -615,6 +646,7 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                     </div>
                 )}
 
+                {/* Descrição e Anexos */}
                 <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
                     <h3 className="text-slate-400 font-black uppercase text-xs tracking-widest mb-4 flex items-center gap-2"><FileText size={16}/> Pauta Oficial</h3>
                     <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap">
@@ -636,6 +668,7 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
 
             <div className="lg:col-span-4 space-y-6">
                 
+                {/* Cédula de Votação */}
                 <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 sticky top-6">
                     <h3 className="text-lg font-bold text-slate-800 mb-2 flex items-center">
                         <Lock className="h-5 w-5 mr-2 text-emerald-600" />
@@ -705,11 +738,10 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                                 </button>
                             ))}
                             <button
-                                onClick={handleVote}
+                                onClick={handleVoteClick}
                                 disabled={!selectedOption}
                                 className="w-full mt-6 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold py-3 rounded-lg shadow-md transition-colors"
                             >
-                                {/* BOTÃO DINÂMICO CONFORME QUANTIDADE DE UNIDADES */}
                                 {myUnits.length > 1 ? 'Selecionar Unidades & Confirmar' : 'Confirmar Voto Seguro'}
                             </button>
                         </div>
@@ -732,8 +764,8 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                     <div className="p-4 bg-slate-50 border-b flex justify-between items-center">
                         <span className="font-black text-slate-700 flex items-center gap-2"><MessageSquare size={18}/> Chat</span>
                         <div className="flex items-center gap-1">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase">Ao Vivo</span>
+                            <span className={`w-2 h-2 rounded-full ${isClosed ? 'bg-red-500' : 'bg-emerald-500 animate-pulse'}`}></span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">{isClosed ? 'Histórico' : 'Ao Vivo'}</span>
                         </div>
                     </div>
                     
@@ -757,8 +789,8 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                         <input 
                             value={chatMsg} 
                             onChange={e => setChatMsg(e.target.value)} 
-                            placeholder="Escreva sua mensagem..." 
-                            className="flex-1 bg-slate-100 border-none rounded-xl px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500 transition-all" 
+                            placeholder={isClosed ? "O chat foi encerrado." : "Escreva sua mensagem..."}
+                            className="flex-1 bg-slate-100 border-none rounded-xl px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500 transition-all disabled:opacity-70" 
                             disabled={isClosed}
                         />
                         <button type="submit" disabled={!chatMsg.trim() || !connected || isClosed} className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-lg shadow-blue-200">

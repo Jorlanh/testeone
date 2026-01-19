@@ -1,11 +1,9 @@
-// src/services/api.ts
 import axios from 'axios';
 
 export const api = axios.create({
   baseURL: (import.meta as any).env.VITE_API_URL || 'http://localhost:8080/api',
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  // REMOVIDO: headers: { 'Content-Type': 'application/json' }
+  // MOTIVO: O Axios define isso automaticamente. Se deixarmos fixo, quebra o upload de arquivos (PDF).
 });
 
 api.interceptors.request.use((config) => {
@@ -19,8 +17,9 @@ api.interceptors.request.use((config) => {
   if (storedUser) {
     try {
       const user = JSON.parse(storedUser);
-      // CORREÇÃO: Tenta pegar o ID do tenant de qualquer lugar (raiz ou objeto interno)
+      // Garante que pega o ID do tenant independente da estrutura do objeto salvo
       const tenantId = user.tenantId || (user.tenant && user.tenant.id);
+      
       if (tenantId) {
         config.headers['X-Tenant-ID'] = tenantId;
       }
@@ -37,10 +36,13 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Redireciona para login se o token for inválido/expirado (Erro 401)
     if (error.response?.status === 401 && !window.location.hash.includes('auth')) {
       localStorage.removeItem('@Votzz:token');
       localStorage.removeItem('@Votzz:user');
-      window.location.href = '#/auth';
+      // Recarrega a página para limpar estados de memória
+      window.location.href = '#/auth/login';
+      window.location.reload();
     }
     return Promise.reject(error);
   }

@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, CartesianGrid 
 } from 'recharts';
 import { 
-  Users, FileText, CheckCircle, Plus, Megaphone, Calendar, Wallet, Edit, Settings, Upload, Download, FileCheck, Banknote, ShieldAlert, ArrowRight, Building, Shield
+  Users, FileText, CheckCircle, Plus, Megaphone, Calendar, Wallet, Edit, Settings, Upload, Download, FileCheck, Banknote, ShieldAlert, ArrowRight, Building, Shield, Trash2, X, Eye, EyeOff
 } from 'lucide-react';
 import api from '../services/api'; 
 import { Assembly, User } from '../types';
@@ -34,6 +34,11 @@ interface BankInfo {
   account: string;
   pixKey: string;
   asaasWalletId: string;
+}
+
+interface UnitItem {
+  unidade: string;
+  bloco: string;
 }
 
 const Dashboard: React.FC = () => {
@@ -94,8 +99,15 @@ const Dashboard: React.FC = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [bankForm, setBankForm] = useState<BankInfo>({ bankName: '', agency: '', account: '', pixKey: '', asaasWalletId: '' });
   
+  // Lista de unidades temporárias para edição/criação
+  const [tempUnits, setTempUnits] = useState<UnitItem[]>([]);
+  const [newUnit, setNewUnit] = useState<UnitItem>({ unidade: '', bloco: '' });
+
+  // Estados de Senha
+  const [showPassword, setShowPassword] = useState(false);
+  
   const [userForm, setUserForm] = useState({ 
-      nome: '', email: '', cpf: '', whatsapp: '', unidade: '', bloco: '', role: 'MORADOR', password: '' 
+      nome: '', email: '', cpf: '', whatsapp: '', role: 'MORADOR', password: '', confirmPassword: ''
   });
   
   const [reportForm, setReportForm] = useState({ month: 'Janeiro', year: new Date().getFullYear() });
@@ -144,7 +156,6 @@ const Dashboard: React.FC = () => {
         const hasTenantContext = user?.tenantId || (user as any)?.tenant?.id;
 
         if (isManager && hasTenantContext) {
-            // Correção da Linha 151/155: Catch silencioso para não quebrar a Promise.allSettled
             const adminPromises = [
                 api.get('/users').catch(() => ({ data: [] })),
                 api.get('/tenants/audit-logs').catch(() => ({ data: [] })),
@@ -198,7 +209,6 @@ const Dashboard: React.FC = () => {
   }, [assemblies]);
   
   const chartData = useMemo(() => {
-    // Se não houver assembleias, retorna array vazio para não bugar o gráfico
     if (!assemblies || assemblies.length === 0) return [];
 
     const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -243,18 +253,40 @@ const Dashboard: React.FC = () => {
     } catch (e) { alert("Erro ao salvar dados bancários."); }
   };
 
+  const addUnit = () => {
+    if (!newUnit.unidade) return; 
+    setTempUnits([...tempUnits, newUnit]);
+    setNewUnit({ unidade: '', bloco: '' });
+  };
+  const removeUnit = (index: number) => {
+    setTempUnits(tempUnits.filter((_, i) => i !== index));
+  };
+
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (userForm.password !== userForm.confirmPassword) {
+        alert("As senhas não conferem!");
+        return;
+    }
+
     try {
+        const payload = {
+            ...userForm,
+            unidade: tempUnits[0]?.unidade || '',
+            bloco: tempUnits[0]?.bloco || '',
+            unidadesList: tempUnits.map(u => `${u.unidade}${u.bloco ? ' - ' + u.bloco : ''}`) 
+        };
+
         if (editingUser) {
             if (editingUser.role === 'ADMIN') {
                 alert("Você não pode editar um Super Admin da Votzz.");
                 return;
             }
-            await api.put(`/users/${editingUser.id}`, userForm);
+            await api.put(`/users/${editingUser.id}`, payload);
             alert("Usuário atualizado!");
         } else {
-            await api.post('/users', userForm);
+            await api.post('/users', payload);
             alert("Usuário criado!");
         }
         setIsUserModalOpen(false);
@@ -269,22 +301,24 @@ const Dashboard: React.FC = () => {
         return;
     }
     setEditingUser(u);
-    setUserForm({
-        nome: u.nome || '',
-        email: u.email || '',
-        cpf: u.cpf || '',
-        whatsapp: u.whatsapp || '',
-        unidade: u.unidade || '',
-        bloco: u.bloco || '',
-        role: u.role || 'MORADOR',
-        password: '' 
-    });
+    let userUnits: UnitItem[] = [];
+    if ((u as any).unidadesList && (u as any).unidadesList.length > 0) {
+        userUnits = (u as any).unidadesList.map((str: string) => {
+            const parts = str.split(' - ');
+            return { unidade: parts[0]?.trim() || '', bloco: parts[1]?.trim() || '' };
+        });
+    } else {
+        userUnits = [{ unidade: u.unidade || '', bloco: u.bloco || '' }];
+    }
+    setTempUnits(userUnits.filter(x => x.unidade));
+    setUserForm({ nome: u.nome || '', email: u.email || '', cpf: u.cpf || '', whatsapp: u.whatsapp || '', role: u.role || 'MORADOR', password: '', confirmPassword: '' });
     setIsUserModalOpen(true);
   };
 
   const openCreateUser = () => {
     setEditingUser(null);
-    setUserForm({ nome: '', email: '', cpf: '', whatsapp: '', unidade: '', bloco: '', role: 'MORADOR', password: 'votzz' });
+    setTempUnits([]);
+    setUserForm({ nome: '', email: '', cpf: '', whatsapp: '', role: 'MORADOR', password: 'votzz', confirmPassword: 'votzz' });
     setIsUserModalOpen(true);
   };
 
@@ -306,6 +340,27 @@ const Dashboard: React.FC = () => {
         const msg = error.response?.data?.message || "Verifique o arquivo.";
         alert("Erro ao enviar relatório: " + msg);
     }
+  };
+
+  const handleDeleteReport = async (id: string) => {
+    if (!window.confirm("Deseja realmente apagar este relatório?")) return;
+    try {
+        await api.delete(`/financial/reports/${id}`);
+        setReports(prev => prev.filter(r => r.id !== id));
+        alert("Relatório removido.");
+    } catch(e) { alert("Erro ao remover relatório."); }
+  };
+
+  const handleDownloadFile = (url: string, fileName: string) => {
+      const secureUrl = fixUrl(url);
+      const link = document.createElement('a');
+      link.href = secureUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.setAttribute('download', fileName || 'documento.pdf');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
   };
 
   return (
@@ -434,7 +489,7 @@ const Dashboard: React.FC = () => {
                   <tr key={u.id} className="border-b last:border-0 hover:bg-slate-50 transition-colors">
                     <td className="py-4 px-2 font-bold text-slate-700">{u.nome || u.name}</td>
                     <td className="py-4 px-2 text-slate-500 text-xs">{u.email}</td>
-                    <td className="py-4 px-2 text-slate-600 font-mono">{u.unidade || '-'} / {u.bloco || '-'}</td>
+                    <td className="py-4 px-2 text-slate-600 font-mono text-xs">{(u as any).unidadesList ? (u as any).unidadesList.join(', ') : `${u.unidade} ${u.bloco || ''}`}</td>
                     <td className="py-4 px-2">
                           <span className={`text-[10px] font-black px-2 py-1 rounded uppercase ${u.role === 'SINDICO' ? 'bg-purple-100 text-purple-700' : u.role === 'ADM_CONDO' ? 'bg-blue-100 text-blue-700' : u.role === 'ADMIN' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>
                               {u.role === 'ADM_CONDO' ? 'Admin Condo' : u.role === 'ADMIN' ? 'Votzz Admin' : u.role}
@@ -453,14 +508,12 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Chart Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 lg:col-span-2 min-w-0">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-lg font-bold text-slate-800">Evolução de Participação</h2>
           </div>
           
-          {/* CORREÇÃO DEFINITIVA DO RECHARTS WIDTH(-1) */}
           <div style={{ width: '100%', height: 300, position: 'relative', minWidth: 0 }}>
             {chartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
@@ -519,7 +572,7 @@ const Dashboard: React.FC = () => {
                {reports.slice(0, 3).map(r => (
                  <div key={r.id} className="flex justify-between items-center text-sm border-b border-slate-50 pb-2 last:border-0">
                    <span className="text-slate-600 font-medium">{r.month} {r.year}</span>
-                   <a href={fixUrl(r.url)} target="_blank" rel="noreferrer" className="text-emerald-600 font-bold text-xs hover:underline uppercase tracking-tight">Ver PDF</a>
+                   <button onClick={() => handleDownloadFile(r.url, r.fileName)} className="text-emerald-600 font-bold text-xs hover:underline uppercase tracking-tight">Baixar PDF</button>
                  </div>
                ))}
                {reports.length === 0 && <p className="text-xs text-slate-400 italic">Nenhum disponível.</p>}
@@ -598,7 +651,7 @@ const Dashboard: React.FC = () => {
                     </div>
                 )}
                 
-                {/* Lista de Relatórios - Visível para TODOS */}
+                {/* Lista de Relatórios - Atualizada com Delete e Download Seguro */}
                 <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
                     {reports.length === 0 && <p className="text-sm text-slate-400 italic text-center py-4">Nenhum arquivo encontrado.</p>}
                     {reports.map(r => (
@@ -607,10 +660,27 @@ const Dashboard: React.FC = () => {
                                 <div className="bg-emerald-100 p-2 rounded-lg"><FileCheck className="text-emerald-600" size={20}/></div>
                                 <div>
                                     <p className="font-bold text-sm text-slate-700">{r.month} {r.year}</p>
-                                    <p className="text-[10px] text-slate-400 font-mono">{r.fileName.substring(0, 20)}...</p>
+                                    <p className="text-[10px] text-slate-400 font-mono">{r.fileName.substring(0, 15)}...</p>
                                 </div>
                             </div>
-                            <a href={fixUrl(r.url)} target="_blank" rel="noreferrer" className="bg-slate-100 text-slate-600 p-2 rounded-lg hover:bg-blue-600 hover:text-white transition-all"><Download size={16}/></a>
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={() => handleDownloadFile(r.url, r.fileName)}
+                                    className="bg-slate-100 text-emerald-600 p-2 rounded-lg hover:bg-emerald-600 hover:text-white transition-all flex items-center justify-center"
+                                    title="Baixar Relatório"
+                                >
+                                    <Download size={16}/>
+                                </button>
+                                {isManager && (
+                                    <button 
+                                        onClick={() => handleDeleteReport(r.id)} 
+                                        className="bg-red-50 text-red-400 p-2 rounded-lg hover:bg-red-500 hover:text-white transition-all"
+                                        title="Excluir Relatório"
+                                    >
+                                        <Trash2 size={16}/>
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     ))}
                 </div>
@@ -618,7 +688,6 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* --- MODAL BANCO --- */}
       {isBankModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
              <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-lg animate-in zoom-in-95 duration-200">
@@ -657,10 +726,10 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* --- MODAL USUÁRIO --- */}
+      {/* --- MODAL USUÁRIO (ATUALIZADO COM LISTA DE UNIDADES E SENHA SEGURA) --- */}
       {isUserModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-lg animate-in zoom-in-95 duration-200">
+            <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-lg animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[90vh] custom-scrollbar">
                 <div className="flex justify-between mb-6">
                     <h3 className="font-black text-xl text-slate-800">{editingUser ? 'Editar Membro' : 'Novo Membro'}</h3>
                     <button onClick={() => setIsUserModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors text-2xl font-light">&times;</button>
@@ -681,16 +750,53 @@ const Dashboard: React.FC = () => {
                         <label className="text-[10px] font-black text-slate-400 uppercase ml-1">E-mail de Login</label>
                         <input required type="email" className="w-full p-3 border border-slate-200 rounded-xl text-slate-700 outline-none focus:ring-2 focus:ring-blue-500" placeholder="exemplo@email.com" value={userForm.email} onChange={e => setUserForm({...userForm, email: e.target.value})} />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Nº Unidade</label>
-                            <input className="w-full p-3 border border-slate-200 rounded-xl text-slate-700 outline-none" value={userForm.unidade} onChange={e => setUserForm({...userForm, unidade: e.target.value})} />
+
+                    {/* GERENCIADOR DE MÚLTIPLAS UNIDADES (VISUAL) */}
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        <label className="text-[10px] font-black text-slate-400 uppercase block mb-2">Unidades Vinculadas</label>
+                        
+                        <div className="space-y-2 mb-3">
+                            {tempUnits.length === 0 && <p className="text-xs text-slate-400 italic text-center">Nenhuma unidade adicionada.</p>}
+                            {tempUnits.map((u, i) => (
+                                <div key={i} className="flex gap-2 items-center bg-white p-2 rounded-lg border border-slate-200 shadow-sm animate-in slide-in-from-left-2">
+                                    <span className="flex-1 font-mono text-sm text-slate-700 font-bold pl-2">
+                                        Unid: {u.unidade} {u.bloco && <span className="text-slate-400 font-normal">| Bloco: {u.bloco}</span>}
+                                    </span>
+                                    <button type="button" onClick={() => removeUnit(i)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                                        <X size={16}/>
+                                    </button>
+                                </div>
+                            ))}
                         </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Bloco/Torre</label>
-                            <input className="w-full p-3 border border-slate-200 rounded-xl text-slate-700 outline-none" value={userForm.bloco} onChange={e => setUserForm({...userForm, bloco: e.target.value})} />
+
+                        <div className="flex gap-2 items-end">
+                            <div className="flex-1">
+                                <input 
+                                    className="w-full p-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-emerald-500 bg-white" 
+                                    placeholder="Nº Unidade (Ex: 101)" 
+                                    value={newUnit.unidade} 
+                                    onChange={e => setNewUnit({...newUnit, unidade: e.target.value})} 
+                                />
+                            </div>
+                            <div className="w-24">
+                                <input 
+                                    className="w-full p-2 text-sm border border-slate-300 rounded-lg outline-none focus:border-emerald-500 bg-white" 
+                                    placeholder="Bloco" 
+                                    value={newUnit.bloco} 
+                                    onChange={e => setNewUnit({...newUnit, bloco: e.target.value})} 
+                                />
+                            </div>
+                            <button 
+                                type="button" 
+                                onClick={addUnit} 
+                                disabled={!newUnit.unidade}
+                                className="bg-emerald-500 text-white p-2 rounded-lg hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                            >
+                                <Plus size={20}/>
+                            </button>
                         </div>
                     </div>
+
                     <div className="space-y-1">
                         <label className="text-[10px] font-black text-slate-400 uppercase ml-1">WhatsApp / Telefone</label>
                         <input 
@@ -708,10 +814,37 @@ const Dashboard: React.FC = () => {
                             <option value="ADM_CONDO">ADMIN CONDO (Gestor Auxiliar)</option>
                         </select>
                     </div>
-                    <div className="pt-2 border-t border-slate-100 mt-2">
+
+                    {/* SENHA SEGURA + CONFIRMAÇÃO */}
+                    <div className="pt-2 border-t border-slate-100 mt-2 space-y-3">
                         <label className="text-[10px] font-black text-blue-600 uppercase ml-1 flex items-center gap-1"><Shield size={12}/> Redefinir Senha</label>
-                        <input type="password" placeholder="Nova senha (opcional)" className="w-full p-3 border border-blue-100 rounded-xl bg-blue-50/30 text-slate-700 outline-none focus:ring-2 focus:ring-blue-500" value={userForm.password} onChange={e => setUserForm({...userForm, password: e.target.value})} />
+                        <div className="relative">
+                            <input 
+                                type={showPassword ? "text" : "password"} 
+                                placeholder="Nova senha (opcional)" 
+                                className="w-full p-3 border border-blue-100 rounded-xl bg-blue-50/30 text-slate-700 outline-none focus:ring-2 focus:ring-blue-500" 
+                                value={userForm.password} 
+                                onChange={e => setUserForm({...userForm, password: e.target.value})} 
+                            />
+                            <button 
+                                type="button" 
+                                onClick={() => setShowPassword(!showPassword)} 
+                                className="absolute right-3 top-3 text-slate-400 hover:text-blue-600 transition-colors"
+                            >
+                                {showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}
+                            </button>
+                        </div>
+                        <div className="relative">
+                            <input 
+                                type={showPassword ? "text" : "password"} 
+                                placeholder="Confirmar nova senha" 
+                                className="w-full p-3 border border-blue-100 rounded-xl bg-blue-50/30 text-slate-700 outline-none focus:ring-2 focus:ring-blue-500" 
+                                value={userForm.confirmPassword} 
+                                onChange={e => setUserForm({...userForm, confirmPassword: e.target.value})} 
+                            />
+                        </div>
                     </div>
+
                     <div className="pt-4">
                         <button type="submit" className="w-full bg-blue-600 text-white p-4 rounded-2xl font-bold hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all">Confirmar e Gravar</button>
                     </div>

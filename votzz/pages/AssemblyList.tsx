@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
-import { Calendar, ChevronRight, Users, Plus, AlertCircle, Archive, LayoutGrid, Download } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Calendar, ChevronRight, Users, Plus, AlertCircle, Archive, LayoutGrid, Download, Trash2, Edit } from 'lucide-react';
 import api from '../services/api';
 import { Assembly } from '../types';
 import { useAuth } from '../context/AuthContext';
 
 const AssemblyList: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [assemblies, setAssemblies] = useState<Assembly[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,22 +25,35 @@ const AssemblyList: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      
-      // Agora que o backend está arrumado, podemos confiar no JSON padrão
       const res = await api.get('/assemblies');
-      
-      // Tratamento simples para garantir array
       const data = Array.isArray(res.data) ? res.data : (res.data.data || []);
-      
-      console.log(`--> Sucesso! ${data.length} assembleias carregadas.`);
       setAssemblies(data);
-
     } catch (err: any) {
       console.error("Erro ao carregar lista:", err);
-      setError("Não foi possível carregar as assembleias. Tente novamente.");
+      setError("Não foi possível carregar as assembleias.");
     } finally {
       setLoading(false);
     }
+  };
+
+  // --- AÇÕES DO SÍNDICO ---
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
+    e.preventDefault(); // Evita entrar na sala
+    if (window.confirm("Tem certeza que deseja EXCLUIR esta assembleia? Todos os votos e chat serão perdidos.")) {
+        try {
+            await api.delete(`/assemblies/${id}`);
+            setAssemblies(prev => prev.filter(a => a.id !== id));
+            alert("Assembleia excluída.");
+        } catch (error) {
+            alert("Erro ao excluir.");
+        }
+    }
+  };
+
+  const handleEdit = (assembly: Assembly, e: React.MouseEvent) => {
+    e.preventDefault(); // Evita entrar na sala
+    // Envia os dados da assembleia para a tela de criação para serem editados
+    navigate('/create-assembly', { state: { assemblyData: assembly } });
   };
 
   // --- FILTROS ---
@@ -67,7 +81,9 @@ const AssemblyList: React.FC = () => {
   };
 
   const handleExportDossier = (id: string) => {
-    window.open(`${api.defaults.baseURL}/assemblies/${id}/dossier`, '_blank');
+    // URL direta para backend
+    const apiUrl = (import.meta as any).env.VITE_API_URL || 'https://votzz.com.br/api';
+    window.open(`${apiUrl}/assemblies/${id}/dossier`, '_blank');
   };
 
   if (loading) return (
@@ -132,33 +148,55 @@ const AssemblyList: React.FC = () => {
               {isClosed && <div className="absolute top-0 right-0 w-16 h-16 bg-slate-50 rotate-45 translate-x-8 -translate-y-8 border-l border-slate-200" />}
               
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-2">
-                    <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${getStatusColor(assembly.status as string)}`}>
-                      {assembly.status}
-                    </span>
-                    <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">
-                        {isClosed ? 'Arquivo Histórico' : 'Assembleia Digital'}
-                    </span>
-                  </div>
-                  <h3 className={`text-lg font-bold mb-1 ${isClosed ? 'text-slate-500' : 'text-slate-800'}`}>
-                    {title}
-                  </h3>
-                  <p className="text-slate-600 text-sm line-clamp-2 mb-4">{assembly.description}</p>
-                  
-                  <div className="flex items-center space-x-6 text-sm text-slate-500 font-medium">
-                    <div className="flex items-center space-x-1.5">
-                      <Calendar className={`h-4 w-4 ${isClosed ? 'text-slate-400' : 'text-emerald-500'}`} />
-                      <span>{displayDate}</span>
+                <Link to={`/voting-room/${assembly.id}`} className="flex-1 cursor-pointer">
+                  <div>
+                    <div className="flex items-center space-x-3 mb-2">
+                      <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${getStatusColor(assembly.status as string)}`}>
+                        {assembly.status}
+                      </span>
+                      <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">
+                          {isClosed ? 'Arquivo Histórico' : 'Assembleia Digital'}
+                      </span>
                     </div>
-                    <div className="flex items-center space-x-1.5">
-                      <Users className={`h-4 w-4 ${isClosed ? 'text-slate-400' : 'text-blue-500'}`} />
-                      <span>{assembly.votes?.length || 0} Votos</span>
+                    <h3 className={`text-lg font-bold mb-1 ${isClosed ? 'text-slate-500' : 'text-slate-800'}`}>
+                      {title}
+                    </h3>
+                    <p className="text-slate-600 text-sm line-clamp-2 mb-4">{assembly.description}</p>
+                    
+                    <div className="flex items-center space-x-6 text-sm text-slate-500 font-medium">
+                      <div className="flex items-center space-x-1.5">
+                        <Calendar className={`h-4 w-4 ${isClosed ? 'text-slate-400' : 'text-emerald-500'}`} />
+                        <span>{displayDate}</span>
+                      </div>
+                      <div className="flex items-center space-x-1.5">
+                        <Users className={`h-4 w-4 ${isClosed ? 'text-slate-400' : 'text-blue-500'}`} />
+                        <span>{assembly.votes?.length || 0} Votos</span>
+                      </div>
                     </div>
                   </div>
-                </div>
+                </Link>
 
                 <div className="flex flex-col md:flex-row items-center gap-2">
+                  {/* Ações do Síndico */}
+                  {isManager && !isClosed && (
+                      <>
+                        <button 
+                            onClick={(e) => handleEdit(assembly, e)}
+                            className="p-3 text-amber-500 bg-amber-50 hover:bg-amber-100 rounded-xl border border-amber-200 transition-all"
+                            title="Editar Assembleia"
+                        >
+                            <Edit size={18} />
+                        </button>
+                        <button 
+                            onClick={(e) => handleDelete(assembly.id, e)}
+                            className="p-3 text-red-500 bg-red-50 hover:bg-red-100 rounded-xl border border-red-200 transition-all"
+                            title="Excluir Assembleia"
+                        >
+                            <Trash2 size={18} />
+                        </button>
+                      </>
+                  )}
+
                   {isClosed && isManager && (
                     <button 
                       onClick={() => handleExportDossier(assembly.id)}
@@ -167,6 +205,7 @@ const AssemblyList: React.FC = () => {
                       <Download size={16} /> Dossiê
                     </button>
                   )}
+                  
                   <Link 
                     to={`/voting-room/${assembly.id}`}
                     className={`inline-flex items-center justify-center px-6 py-3 border shadow-sm text-sm font-bold rounded-xl w-full md:w-auto transition-all ${
@@ -175,7 +214,7 @@ const AssemblyList: React.FC = () => {
                         : 'bg-white text-slate-700 border-slate-200 hover:border-emerald-500 hover:text-emerald-600'
                     }`}
                   >
-                    {isClosed ? 'Ver Resultados' : (isManager ? 'Gerenciar' : 'Votar')}
+                    {isClosed ? 'Ver Resultados' : 'Entrar na Sala'}
                     <ChevronRight className="ml-2 h-4 w-4" />
                   </Link>
                 </div>
@@ -185,7 +224,6 @@ const AssemblyList: React.FC = () => {
         }) : (
           <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300 text-slate-500 font-medium">
             Nenhuma assembleia encontrada nesta categoria.
-            {assemblies.length === 0 && <p className="text-xs mt-2">O banco de dados não retornou registros.</p>}
           </div>
         )}
       </div>

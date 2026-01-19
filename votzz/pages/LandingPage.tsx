@@ -310,7 +310,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
               <p className="text-xs text-emerald-400 font-bold uppercase tracking-wider mb-4">31 a 80 Unidades</p>
               
               <div className="my-6">
-                <span className="text-4xl font-bold text-white">R$ 490</span>
+                <span className="text-4xl font-bold text-white">R$ 349</span>
                 <span className="text-slate-400 text-sm">/mês</span>
               </div>
               <p className="text-slate-300 mb-8 text-sm">Melhor custo-benefício.</p>
