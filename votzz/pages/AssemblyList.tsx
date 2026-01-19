@@ -80,9 +80,11 @@ const AssemblyList: React.FC = () => {
     return 'bg-amber-100 text-amber-700 border-amber-200';
   };
 
-  const handleExportDossier = (id: string) => {
-    // URL direta para backend
-    const apiUrl = (import.meta as any).env.VITE_API_URL || 'https://votzz.com.br/api';
+  const handleExportDossier = (id: string, e: React.MouseEvent) => {
+    e.preventDefault(); // Evita entrar na sala
+    e.stopPropagation();
+    // URL direta para backend - Agora disponível para Morador e Gestor via API
+    const apiUrl = (import.meta as any).env.VITE_API_URL || 'http://localhost:8080/api';
     window.open(`${apiUrl}/assemblies/${id}/dossier`, '_blank');
   };
 
@@ -197,9 +199,10 @@ const AssemblyList: React.FC = () => {
                       </>
                   )}
 
-                  {isClosed && isManager && (
+                  {/* Dossiê liberado para moradores e gestores se estiver encerrada */}
+                  {isClosed && (
                     <button 
-                      onClick={() => handleExportDossier(assembly.id)}
+                      onClick={(e) => handleExportDossier(assembly.id, e)}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-all w-full md:w-auto border border-blue-100"
                     >
                       <Download size={16} /> Dossiê
