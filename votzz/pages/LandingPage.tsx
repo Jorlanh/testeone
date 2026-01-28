@@ -21,13 +21,14 @@ import {
   Zap, 
   Check, 
   Headphones, 
-  Crown,
-  Video,
-  ArrowRight,
-  MousePointerClick,
-  Percent,
-  CircleDollarSign,
-  Handshake
+  Crown, 
+  Video, 
+  ArrowRight, 
+  MousePointerClick, 
+  Percent, 
+  CircleDollarSign, 
+  Handshake,
+  Quote
 } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { User } from '../types';
@@ -35,7 +36,7 @@ import { User } from '../types';
 /**
  * LANDING PAGE COMPLETA - VOTZZ
  * Esta página contém o fluxo principal de vendas, apresentação de recursos
- * e o novo Programa de Afiliados com comissão de 15% recorrente.
+ * e o novo Programa de Afiliados com comissão de 30% por venda (CPA).
  */
 
 interface LandingPageProps {
@@ -86,15 +87,37 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
   const affiliateFaq = [
     {
       q: "Como recebo minha comissão?",
-      a: "O pagamento é feito via PIX todo dia 10 de cada mês, referente aos clientes ativos que pagaram a mensalidade no mês anterior."
+      a: "O pagamento é feito via PIX todo dia 10 de cada mês, referente às vendas confirmadas e pagas no mês anterior."
     },
     {
-      q: "A comissão é vitalícia?",
-      a: "Sim! Enquanto o condomínio indicado por você continuar utilizando e pagando a plataforma, você recebe seus 15% mensalmente."
+      q: "A comissão é recorrente?",
+      a: "Não. Você recebe 30% do valor total do plano (mensal, trimestral ou anual) contratado pelo cliente uma única vez."
     },
     {
       q: "Preciso ser síndico para ser afiliado?",
       a: "Não. O programa é aberto para síndicos profissionais, administradoras, consultores de condomínio ou qualquer entusiasta da tecnologia."
+    }
+  ];
+
+  // Dados dos Feedbacks (Novos)
+  const testimonials = [
+    {
+      name: "Mariana Costa",
+      role: "Síndica Profissional - SP",
+      text: "Facilitou demais a minha vida. Antes eu demorava dias para consolidar os votos da assembleia e gerar a ata. Com a Votzz, sai tudo na hora e o suporte é excelente.",
+      avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Mariana"
+    },
+    {
+      name: "Ricardo Mendes",
+      role: "Conselheiro - Residencial Aurora",
+      text: "A transparência que a plataforma trouxe para o nosso condomínio acabou com as brigas no grupo de WhatsApp. Todo mundo confia no resultado da votação agora.",
+      avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Ricardo"
+    },
+    {
+      name: "Fernanda Oliveira",
+      role: "Administradora de Condomínios",
+      text: "Implementei em 5 condomínios da minha carteira. A interface é tão simples que até os moradores mais idosos conseguiram baixar o app e votar sem pedir ajuda.",
+      avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Fernanda"
     }
   ];
 
@@ -451,29 +474,34 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
       {/* ============================================================
           7. SOCIAL PROOF / DEPOIMENTOS
           ============================================================ */}
-      <section className="py-10 overflow-hidden">
-        <div className="max-w-0x-l mx-auto px-2 sm:px-2 lg:px-3">
-            <div className="max-w-2xl mx-auto">
-              <div className="text-center mb-5s">
-                <h2 className="text-3xl lg:text-4xl font-extrabold text-slate-900">Aprovado pelos melhores gestores</h2>
-              </div>
-              <div className="bg-slate-50/80 p-10 lg:p-16 rounded-[2.5rem] border border-slate-100 text-center relative shadow-inner">
-                <div className="flex justify-center text-yellow-400 mb-8 gap-1">
-                  {[1,2,3,4,5].map(i => <Star key={i} className="h-6 w-6 fill-current drop-shadow-sm" />)}
-                </div>
-                <p className="text-slate-700 italic text-2xl lg:text-3xl mb-10 font-medium leading-relaxed">
-                  &ldquo;A plataforma revolucionou nossas assembleias. O quórum aumentou de 20% para 85% já na primeira votação online. A transparência agora é inquestionável.&rdquo;
-                </p>
-                <div className="flex flex-col items-center justify-center">
-                    <div className="w-20 h-20 rounded-full bg-slate-300 mb-4 overflow-hidden ring-4 ring-white shadow-lg">
-                      <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="avatar do Roberto Silva" className="w-full h-full object-cover" />
+      <section className="py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-16">
+              <h2 className="text-3xl lg:text-4xl font-extrabold text-slate-900">Aprovado pelos melhores gestores</h2>
+              <p className="text-slate-500 mt-4 max-w-2xl mx-auto">Veja o que síndicos e administradoras falam sobre a experiência Votzz.</p>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {testimonials.map((item, idx) => (
+                <div key={idx} className="bg-slate-50 p-8 rounded-3xl border border-slate-100 relative hover:shadow-lg transition-all">
+                  <div className="absolute top-8 right-8 text-emerald-100">
+                    <Quote className="w-12 h-12" />
+                  </div>
+                  <div className="flex gap-1 mb-6">
+                    {[1,2,3,4,5].map(i => <Star key={i} className="w-4 h-4 text-amber-400 fill-current" />)}
+                  </div>
+                  <p className="text-slate-600 text-sm leading-relaxed mb-8 relative z-10">
+                    "{item.text}"
+                  </p>
+                  <div className="flex items-center gap-4">
+                    <img src={item.avatar} alt={item.name} className="w-12 h-12 rounded-full border-2 border-white shadow-sm" />
+                    <div>
+                      <p className="font-bold text-slate-900 text-sm">{item.name}</p>
+                      <p className="text-xs text-emerald-600 font-bold uppercase tracking-wide">{item.role}</p>
                     </div>
-                    <div className="text-center">
-                      <p className="font-black text-slate-900 text-lg">Roberto Silva</p>
-                      <p className="text-sm text-emerald-600 font-bold uppercase tracking-widest">Síndico Profissional - SP</p>
-                    </div>
+                  </div>
                 </div>
-              </div>
+              ))}
             </div>
         </div>
       </section>
@@ -508,13 +536,13 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
                     Você é síndico profissional, administradora de condomínios ou consultor imobiliário? 
                   </p>
                   
-                  {/* TEXTO DE COMISSÃO DE 15% EM DESTAQUE */}
+                  {/* TEXTO DE COMISSÃO DE 30% EM DESTAQUE */}
                   <div className="bg-emerald-500/5 border-l-4 border-emerald-500 p-6 rounded-r-2xl transform hover:scale-[1.02] transition-transform">
                     <p className="text-2xl lg:text-3xl font-bold text-white">
-                      Ganhe <span className="text-emerald-400 font-black underline decoration-emerald-500 decoration-4 underline-offset-4">15% de comissão recorrente</span> por cada cliente ativo na base.
+                      Ganhe <span className="text-emerald-400 font-black underline decoration-emerald-500 decoration-4 underline-offset-4">30% de comissão</span> por cada venda realizada.
                     </p>
                     <p className="text-slate-400 text-sm mt-3 flex items-center gap-2 justify-center lg:justify-start">
-                      <Check className="w-4 h-4 text-emerald-500" /> Dinheiro direto na sua conta todo mês enquanto o cliente pagar.
+                      <Check className="w-4 h-4 text-emerald-500" /> Receba sua parte assim que o condomínio pagar a primeira fatura.
                     </p>
                   </div>
                 </div>
@@ -550,15 +578,16 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
               <div className="lg:w-1/2 w-full max-w-lg mx-auto">
                   <div className="bg-slate-800/60 backdrop-blur-xl border border-slate-700/50 rounded-[2.5rem] p-10 lg:p-12 transform hover:rotate-1 hover:scale-[1.01] transition-all duration-700 relative shadow-2xl">
                       
-                      {/* BADGE DE 15% SOBRE O CARD */}
+                      {/* BADGE DE 30% SOBRE O CARD */}
                       <div className="absolute -top-5 -right-5 bg-emerald-500 text-slate-900 font-black px-6 py-3 rounded-2xl text-lg shadow-[0_10px_20px_rgba(16,185,129,0.4)] animate-bounce z-20">
-                        15% RECORRENTE
+                        30% POR VENDA
                       </div>
 
                       <div className="flex items-center justify-between mb-10 border-b border-slate-700 pb-6">
                         <div>
                            <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">Ganhos Estimados</p>
-                           <p className="text-5xl font-black text-white tracking-tighter">R$ 3.450,00</p>
+                           {/* VALOR DOBRADO PARA REFLETIR 30% */}
+                           <p className="text-5xl font-black text-white tracking-tighter">R$ 8.500,00</p>
                         </div>
                         <div className="bg-emerald-500/20 p-4 rounded-2xl border border-emerald-500/30">
                            <TrendingUp className="w-8 h-8 text-emerald-500" />
@@ -566,14 +595,15 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
                       </div>
 
                       <div className="space-y-6">
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Ativos na sua carteira</p>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Vendas Recentes</p>
                         
                         <div className="flex justify-between items-center bg-slate-900/40 p-4 rounded-2xl border border-slate-700/50">
                           <div className="flex items-center gap-3">
                             <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
                             <span className="text-slate-200 font-medium">Condomínio Jardins</span>
                           </div>
-                          <span className="text-emerald-400 font-black">+ R$ 45,00/mês</span>
+                          {/* VALOR DOBRADO */}
+                          <span className="text-emerald-400 font-black">+ R$ 1.008,00</span>
                         </div>
 
                         <div className="flex justify-between items-center bg-slate-900/40 p-4 rounded-2xl border border-slate-700/50">
@@ -581,7 +611,8 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
                             <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
                             <span className="text-slate-200 font-medium">Clube Pinheiros</span>
                           </div>
-                          <span className="text-emerald-400 font-black">+ R$ 120,00/mês</span>
+                           {/* VALOR DOBRADO */}
+                          <span className="text-emerald-400 font-black">+ R$ 594,00</span>
                         </div>
 
                         <div className="flex justify-between items-center bg-slate-900/40 p-4 rounded-2xl border border-slate-700/50">
@@ -589,7 +620,8 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
                             <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
                             <span className="text-slate-200 font-medium">Residencial Orion</span>
                           </div>
-                          <span className="text-emerald-400 font-black">+ R$ 52,35/mês</span>
+                           {/* VALOR DOBRADO */}
+                          <span className="text-emerald-400 font-black">+ R$ 288,00</span>
                         </div>
                       </div>
 
@@ -626,7 +658,13 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
               <Link to="/pricing" className="bg-white text-emerald-700 px-12 py-5 rounded-full font-black text-lg shadow-2xl hover:bg-slate-50 transition-all hover:scale-105 active:scale-95">
                 VER PLANOS E ASSINAR
               </Link>
-              <button className="bg-emerald-900/30 text-white border-2 border-emerald-400/50 px-12 py-5 rounded-full font-black text-lg backdrop-blur-sm hover:bg-emerald-900/50 transition-all">
+              <button 
+                className="bg-emerald-900/30 text-white border-2 border-emerald-400/50 px-12 py-5 rounded-full font-black text-lg backdrop-blur-sm hover:bg-emerald-900/50 transition-all"
+                onClick={() => {
+                  navigate('/pricing');
+                  scrollToSection('pricing');
+                }}
+              >
                 SOLICITAR DEMO
               </button>
           </div>
@@ -686,7 +724,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ user }) => {
                     <li className="pt-4">
                       <p className="text-[10px] text-slate-600 leading-tight">
                         VORDX HOLDINGS LTDA<br />
-                        CNPJ: 00.000.000/0001-00
+                        CNPJ: 58.500.491/0001-10
                       </p>
                     </li>
                   </ul>

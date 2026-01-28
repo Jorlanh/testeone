@@ -3,7 +3,7 @@ import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { Wallet, Link as LinkIcon, TrendingUp, Lock, Save, Edit2, X, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 
-const maskData = (data: string, type: 'email' | 'phone' | 'pix' | 'cpf') => {
+const maskData = (data: string | undefined, type: 'email' | 'phone' | 'pix' | 'cpf') => {
   if (!data) return 'Não cadastrado';
   if (type === 'phone') return data; 
   if (type === 'email') {

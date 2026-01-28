@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, CartesianGrid 
 } from 'recharts';
 import { 
-  Users, FileText, CheckCircle, Plus, Megaphone, Calendar, Wallet, Edit, Settings, Upload, Download, FileCheck, Banknote, ShieldAlert, ArrowRight, Building, Shield, Trash2, X, Eye, EyeOff
+  Users, FileText, CheckCircle, Plus, Megaphone, Calendar, Wallet, Edit, Settings, Upload, Download, FileCheck, Banknote, ShieldAlert, ArrowRight, Building, Shield, Trash2, X, Eye, EyeOff, Package
 } from 'lucide-react';
 import api from '../services/api'; 
 import { Assembly, User } from '../types';
@@ -42,7 +42,7 @@ interface UnitItem {
 }
 
 const Dashboard: React.FC = () => {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const navigate = useNavigate();
 
   const [assemblies, setAssemblies] = useState<Assembly[]>([]);
@@ -99,11 +99,9 @@ const Dashboard: React.FC = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [bankForm, setBankForm] = useState<BankInfo>({ bankName: '', agency: '', account: '', pixKey: '', asaasWalletId: '' });
   
-  // Lista de unidades temporárias para edição/criação
   const [tempUnits, setTempUnits] = useState<UnitItem[]>([]);
   const [newUnit, setNewUnit] = useState<UnitItem>({ unidade: '', bloco: '' });
 
-  // Estados de Senha
   const [showPassword, setShowPassword] = useState(false);
   
   const [userForm, setUserForm] = useState({ 
@@ -112,68 +110,66 @@ const Dashboard: React.FC = () => {
   
   const [reportForm, setReportForm] = useState({ month: 'Janeiro', year: new Date().getFullYear() });
 
-  const isManager = user?.role === 'MANAGER' || user?.role === 'SINDICO' || user?.role === 'ADM_CONDO';
+  const isManager = user?.role === 'MANAGER' || user?.role === 'SINDICO' || user?.role === 'ADM_CONDO' || user?.role === 'ADMIN';
   const displayName = user?.nome || user?.email?.split('@')[0] || 'Morador';
 
   useEffect(() => {
     if (user) {
         loadData();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const loadData = async () => {
     try {
-        const basePromises = [
-          api.get('/assemblies').catch(() => ({ data: [] })),             
-          api.get('/financial/balance').catch(() => ({ data: { balance: 0, lastUpdate: 'N/A' } })),      
-          api.get('/financial/reports').catch(() => ({ data: [] })),      
-          api.get('/condo/dashboard/stats').catch(() => ({ data: null }))
+        const commonPromises: Promise<any>[] = [
+            api.get('/assemblies').catch(() => ({ data: [] }))
         ];
 
-        const baseResults = await Promise.allSettled(basePromises);
-
-        if (baseResults[0].status === 'fulfilled') {
-            setAssemblies(Array.isArray(baseResults[0].value?.data) ? baseResults[0].value.data : []);
-        }
-        
-        if (baseResults[1].status === 'fulfilled') {
-            const finData = baseResults[1].value?.data;
-            setFinancial({
-                balance: Number(finData?.balance ?? 0),
-                lastUpdate: finData?.lastUpdate || 'N/A'
-            });
-        }
-        
-        if (baseResults[2].status === 'fulfilled') {
-            setReports(baseResults[2].value?.data || []);
-        }
-        
-        if (baseResults[3].status === 'fulfilled' && baseResults[3].value?.data) {
-            setRealStats(baseResults[3].value.data);
-        }
-
-        const hasTenantContext = user?.tenantId || (user as any)?.tenant?.id;
-
-        if (isManager && hasTenantContext) {
-            const adminPromises = [
+        if (isManager) {
+            commonPromises.push(
+                api.get('/financial/balance').catch(() => ({ data: { balance: 0, lastUpdate: 'N/A' } })),
+                api.get('/financial/reports').catch(() => ({ data: [] })),
+                api.get('/condo/dashboard/stats').catch(() => ({ data: null })),
                 api.get('/users').catch(() => ({ data: [] })),
                 api.get('/tenants/audit-logs').catch(() => ({ data: [] })),
                 api.get('/tenants/bank-info').catch(() => ({ data: null })),
                 api.get('/tenants/my-subscription').catch(() => ({ data: null }))
-            ];
+            );
+        } else {
+             commonPromises.push(
+                api.get('/financial/reports').catch(() => ({ data: [] }))
+             );
+        }
 
-            const adminResults = await Promise.allSettled(adminPromises);
+        const results = await Promise.allSettled(commonPromises);
 
-            if (adminResults[0].status === 'fulfilled') {
-                setCondoUsers(Array.isArray(adminResults[0].value?.data) ? adminResults[0].value.data : []);
+        if (results[0].status === 'fulfilled') {
+            setAssemblies(Array.isArray(results[0].value?.data) ? results[0].value.data : []);
+        }
+
+        if (isManager) {
+            if (results[1].status === 'fulfilled') {
+                const finData = (results[1] as any).value?.data;
+                setFinancial({
+                    balance: Number(finData?.balance ?? 0),
+                    lastUpdate: finData?.lastUpdate || 'N/A'
+                });
             }
-            if (adminResults[1].status === 'fulfilled') {
-                setAuditLogs(adminResults[1].value?.data || []);
+            if (results[2].status === 'fulfilled') {
+                setReports((results[2] as any).value?.data || []);
             }
-            if (adminResults[2].status === 'fulfilled') {
-                const data = adminResults[2].value?.data;
-                if (data) {
+            if (results[3].status === 'fulfilled') {
+                setRealStats((results[3] as any).value?.data || {});
+            }
+            if (results[4].status === 'fulfilled') {
+                 setCondoUsers(Array.isArray((results[4] as any).value?.data) ? (results[4] as any).value.data : []);
+            }
+            if (results[5].status === 'fulfilled') {
+                 setAuditLogs((results[5] as any).value?.data || []);
+            }
+            if (results[6].status === 'fulfilled') {
+                 const data = (results[6] as any).value?.data;
+                 if (data) {
                     setBankForm({
                         bankName: data.bankName || '',
                         agency: data.agency || '',
@@ -181,15 +177,20 @@ const Dashboard: React.FC = () => {
                         pixKey: data.pixKey || '',
                         asaasWalletId: data.asaasWalletId || ''
                     });
-                }
+                 }
             }
-            if (adminResults[3].status === 'fulfilled') {
-                const subData = adminResults[3].value?.data;
-                if (subData && subData.expirationDate) {
+            if (results[7].status === 'fulfilled') {
+                 const subData = (results[7] as any).value?.data;
+                 if (subData && subData.expirationDate) {
                     setExpirationDate(subData.expirationDate);
-                }
+                 }
+            }
+        } else {
+             if (results[1] && results[1].status === 'fulfilled') {
+                setReports((results[1] as any).value?.data || []);
             }
         }
+
     } catch (error) {
         console.error("Erro geral no dashboard:", error);
     }
@@ -271,10 +272,14 @@ const Dashboard: React.FC = () => {
     }
 
     try {
+        // Monta o payload garantindo que a unidade principal seja a primeira da lista
+        const firstUnit = tempUnits[0] || { unidade: '', bloco: '' };
+        
         const payload = {
             ...userForm,
-            unidade: tempUnits[0]?.unidade || '',
-            bloco: tempUnits[0]?.bloco || '',
+            unidade: firstUnit.unidade,
+            bloco: firstUnit.bloco,
+            // Envia a lista completa para o backend salvar (se o UserDTO suportar)
             unidadesList: tempUnits.map(u => `${u.unidade}${u.bloco ? ' - ' + u.bloco : ''}`) 
         };
 
@@ -283,16 +288,37 @@ const Dashboard: React.FC = () => {
                 alert("Você não pode editar um Super Admin da Votzz.");
                 return;
             }
+
+            const isSelfUpdate = user?.id === editingUser.id;
+            const isEmailChanged = userForm.email !== editingUser.email;
+
             await api.put(`/users/${editingUser.id}`, payload);
+            
+            if (isSelfUpdate && isEmailChanged) {
+                alert("O e-mail de login foi alterado. Por segurança, você será desconectado para fazer login novamente.");
+                if (signOut) {
+                    signOut();
+                } else {
+                    localStorage.removeItem('@Votzz:token');
+                    localStorage.removeItem('@Votzz:user');
+                    window.location.href = '/';
+                }
+                return;
+            }
+
             alert("Usuário atualizado!");
         } else {
             await api.post('/users', payload);
             alert("Usuário criado!");
         }
+        
         setIsUserModalOpen(false);
         setEditingUser(null);
         loadData();
-    } catch (e) { alert("Erro ao salvar usuário."); }
+    } catch (e: any) { 
+        const msg = e.response?.data?.error || e.response?.data || "Erro ao salvar usuário.";
+        alert(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    }
   };
 
   const openEditUser = (u: User) => {
@@ -301,17 +327,32 @@ const Dashboard: React.FC = () => {
         return;
     }
     setEditingUser(u);
+    
     let userUnits: UnitItem[] = [];
+    
+    // Tenta carregar as unidades existentes
+    // Prioriza a lista moderna, se não tiver, pega a unidade única legado
     if ((u as any).unidadesList && (u as any).unidadesList.length > 0) {
         userUnits = (u as any).unidadesList.map((str: string) => {
             const parts = str.split(' - ');
             return { unidade: parts[0]?.trim() || '', bloco: parts[1]?.trim() || '' };
         });
-    } else {
-        userUnits = [{ unidade: u.unidade || '', bloco: u.bloco || '' }];
+    } else if (u.unidade) {
+        userUnits = [{ unidade: u.unidade, bloco: u.bloco || '' }];
     }
-    setTempUnits(userUnits.filter(x => x.unidade));
-    setUserForm({ nome: u.nome || '', email: u.email || '', cpf: u.cpf || '', whatsapp: u.whatsapp || '', role: u.role || 'MORADOR', password: '', confirmPassword: '' });
+
+    setTempUnits(userUnits);
+    
+    // Carrega os dados no formulário, INCLUINDO CPF
+    setUserForm({ 
+        nome: u.nome || '', 
+        email: u.email || '', 
+        cpf: u.cpf || '',  
+        whatsapp: u.whatsapp || '', 
+        role: u.role || 'MORADOR', 
+        password: '', 
+        confirmPassword: '' 
+    });
     setIsUserModalOpen(true);
   };
 
@@ -444,10 +485,15 @@ const Dashboard: React.FC = () => {
             <div className="bg-white/20 p-2 rounded-full mb-2 group-hover:scale-110 transition-transform"><Megaphone className="w-6 h-6" /></div>
             <span className="font-bold text-sm">Comunicado</span>
           </Link>
-          <button onClick={() => setIsReportModalOpen(true)} className="bg-slate-700 hover:bg-slate-800 text-white p-4 rounded-xl shadow-md transition-all hover:-translate-y-1 flex flex-col items-center justify-center text-center group">
+          <Link to="/orders" className="bg-purple-600 hover:bg-purple-700 text-white p-4 rounded-xl shadow-md transition-all hover:-translate-y-1 flex flex-col items-center justify-center text-center group">
+            <div className="bg-white/20 p-2 rounded-full mb-2 group-hover:scale-110 transition-transform"><Package className="w-6 h-6" /></div>
+            <span className="font-bold text-sm">Encomendas</span>
+          </Link>
+          <button onClick={() => setIsReportModalOpen(true)} className="bg-slate-700 hover:bg-slate-800 text-white p-4 rounded-xl shadow-md transition-all flex flex-col items-center justify-center text-center group">
             <div className="bg-white/20 p-2 rounded-full mb-2 group-hover:scale-110 transition-transform"><FileText className="w-6 h-6" /></div>
             <span className="font-bold text-sm">Relatórios</span>
           </button>
+          
           <div onClick={() => setShowUserList(!showUserList)} className={`bg-white border p-4 rounded-xl shadow-sm transition-all flex flex-col items-center justify-center text-center cursor-pointer hover:bg-slate-50 ${showUserList ? 'ring-2 ring-emerald-500 border-emerald-500' : 'border-slate-200 text-slate-600'}`}>
             <div className={`p-2 rounded-full mb-2 ${showUserList ? 'bg-emerald-100' : 'bg-slate-100'}`}><Users className={`w-6 h-6 ${showUserList ? 'text-emerald-600' : 'text-slate-500'}`} /></div>
             <span className={`text-sm ${showUserList ? 'font-bold text-emerald-700' : 'font-medium'}`}>{showUserList ? 'Fechar Gestão' : 'Gerenciar Usuários'}</span>
@@ -455,13 +501,18 @@ const Dashboard: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <button onClick={() => setIsReportModalOpen(true)} className="bg-white border border-slate-200 hover:border-emerald-500 text-slate-600 p-4 rounded-xl shadow-sm transition-all hover:-translate-y-1 flex flex-col items-center justify-center text-center group">
+              <button onClick={() => setIsReportModalOpen(true)} className="bg-white border border-slate-200 hover:border-emerald-500 text-slate-600 p-4 rounded-xl shadow-sm transition-all flex flex-col items-center justify-center text-center group">
                 <div className="bg-emerald-50 p-2 rounded-full mb-2 group-hover:bg-emerald-100 transition-colors"><FileText className="w-6 h-6 text-emerald-600" /></div>
                 <span className="font-bold text-sm">Relatórios Financeiros</span>
               </button>
+              <Link to="/orders" className="bg-white border border-slate-200 hover:border-purple-500 text-slate-600 p-4 rounded-xl shadow-sm transition-all flex flex-col items-center justify-center text-center group">
+                <div className="bg-purple-50 p-2 rounded-full mb-2 group-hover:bg-purple-100 transition-colors"><Package className="w-6 h-6 text-purple-600" /></div>
+                <span className="font-bold text-sm">Minhas Encomendas</span>
+              </Link>
         </div>
       )}
 
+      {/* LISTA DE USUÁRIOS */}
       {showUserList && isManager && (
         <div className="bg-white p-6 rounded-2xl border-2 border-emerald-500 shadow-xl animate-in slide-in-from-top-4 duration-300">
           <div className="flex justify-between items-center mb-6">
@@ -489,7 +540,14 @@ const Dashboard: React.FC = () => {
                   <tr key={u.id} className="border-b last:border-0 hover:bg-slate-50 transition-colors">
                     <td className="py-4 px-2 font-bold text-slate-700">{u.nome || u.name}</td>
                     <td className="py-4 px-2 text-slate-500 text-xs">{u.email}</td>
-                    <td className="py-4 px-2 text-slate-600 font-mono text-xs">{(u as any).unidadesList ? (u as any).unidadesList.join(', ') : `${u.unidade} ${u.bloco || ''}`}</td>
+                    
+                    {/* EXIBIÇÃO DE UNIDADE CORRIGIDA */}
+                    <td className="py-4 px-2 text-slate-600 font-mono text-xs">
+                        {(u as any).unidadesList && (u as any).unidadesList.length > 0 
+                            ? (u as any).unidadesList.join(', ') 
+                            : (u.unidade ? `${u.unidade} ${u.bloco || ''}` : '-')}
+                    </td>
+
                     <td className="py-4 px-2">
                           <span className={`text-[10px] font-black px-2 py-1 rounded uppercase ${u.role === 'SINDICO' ? 'bg-purple-100 text-purple-700' : u.role === 'ADM_CONDO' ? 'bg-blue-100 text-blue-700' : u.role === 'ADMIN' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>
                               {u.role === 'ADM_CONDO' ? 'Admin Condo' : u.role === 'ADMIN' ? 'Votzz Admin' : u.role}
@@ -508,6 +566,7 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
+      {/* Gráficos e Reports (mantidos) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 lg:col-span-2 min-w-0">
           <div className="flex justify-between items-center mb-6">
@@ -603,7 +662,8 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* --- MODAL RELATÓRIOS --- */}
+      {/* --- MODAIS DE RELATÓRIO, BANCO E USUÁRIOS --- */}
+      
       {isReportModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-lg animate-in zoom-in-95 duration-200">
@@ -651,7 +711,7 @@ const Dashboard: React.FC = () => {
                     </div>
                 )}
                 
-                {/* Lista de Relatórios - Atualizada com Delete e Download Seguro */}
+                {/* Lista de Relatórios */}
                 <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
                     {reports.length === 0 && <p className="text-sm text-slate-400 italic text-center py-4">Nenhum arquivo encontrado.</p>}
                     {reports.map(r => (
@@ -726,7 +786,6 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* --- MODAL USUÁRIO (ATUALIZADO COM LISTA DE UNIDADES E SENHA SEGURA) --- */}
       {isUserModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-lg animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[90vh] custom-scrollbar">
@@ -751,7 +810,18 @@ const Dashboard: React.FC = () => {
                         <input required type="email" className="w-full p-3 border border-slate-200 rounded-xl text-slate-700 outline-none focus:ring-2 focus:ring-blue-500" placeholder="exemplo@email.com" value={userForm.email} onChange={e => setUserForm({...userForm, email: e.target.value})} />
                     </div>
 
-                    {/* GERENCIADOR DE MÚLTIPLAS UNIDADES (VISUAL) */}
+                    {/* CAMPO CPF (ADICIONADO) */}
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase ml-1">CPF</label>
+                        <input 
+                            required 
+                            className="w-full p-3 border border-slate-200 rounded-xl text-slate-700 outline-none focus:ring-2 focus:ring-blue-500" 
+                            placeholder="000.000.000-00" 
+                            value={userForm.cpf} 
+                            onChange={e => setUserForm({...userForm, cpf: e.target.value})} 
+                        />
+                    </div>
+
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                         <label className="text-[10px] font-black text-slate-400 uppercase block mb-2">Unidades Vinculadas</label>
                         
@@ -815,7 +885,6 @@ const Dashboard: React.FC = () => {
                         </select>
                     </div>
 
-                    {/* SENHA SEGURA + CONFIRMAÇÃO */}
                     <div className="pt-2 border-t border-slate-100 mt-2 space-y-3">
                         <label className="text-[10px] font-black text-blue-600 uppercase ml-1 flex items-center gap-1"><Shield size={12}/> Redefinir Senha</label>
                         <div className="relative">

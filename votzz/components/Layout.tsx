@@ -10,7 +10,8 @@ import {
   X, 
   Settings,
   ShieldAlert,
-  MessageSquare
+  MessageSquare,
+  Package // Ícone de Encomendas
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Logo } from './Logo';
@@ -101,6 +102,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       path: '/assemblies', 
       icon: FileText, 
       allowed: ['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER']
+    },
+    // --- ENCOMENDAS (AGORA AQUI) ---
+    { 
+      label: 'Encomendas', 
+      path: '/orders', 
+      icon: Package, 
+      allowed: ['MORADOR', 'SINDICO', 'ADM_CONDO', 'MANAGER', 'PORTEIRO']
     },
     { 
       label: 'Espaços & Reservas', 
@@ -213,7 +221,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   to={item.path} 
                   onClick={() => setIsMobileMenuOpen(false)}
                   className={`flex items-center gap-3 p-4 rounded-xl border ${
-                      isActive(item.path) 
+                    isActive(item.path) 
                       ? 'bg-emerald-600 text-white border-emerald-500 shadow-md' 
                       : 'text-slate-300 bg-slate-800 border-slate-700'
                   }`}

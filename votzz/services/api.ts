@@ -48,8 +48,10 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Redireciona para login se o token for inválido/expirado (401)
-    if (error.response?.status === 401 && !window.location.hash.includes('auth')) {
+    // Redireciona para login se o token for inválido (401) OU proibido (403)
+    // 403 acontece quando o usuário existe mas mudou permissão/email e o token antigo não vale mais
+    if ((error.response?.status === 401 || error.response?.status === 403) && !window.location.hash.includes('auth')) {
+      console.warn("Sessão expirada ou credenciais alteradas. Redirecionando para login...");
       localStorage.removeItem('@Votzz:token');
       localStorage.removeItem('@Votzz:user');
       window.location.href = '#/auth/login';
