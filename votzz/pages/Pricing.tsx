@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Check, Calculator, Building, Crown, Smartphone, Gift, 
+  Check, Calculator, Building, Crown, Smartphone, 
   AlertCircle, ArrowLeft, Loader2, User, Eye, EyeOff, ArrowRight, Banknote, Copy, Shield, Lock, X, FileText, Tag, UserCheck 
 } from 'lucide-react';
 import api from '../services/api'; 
 import { Logo } from '../components/Logo'; 
 
-// IDs dos Planos
+// SEGURANÇA: IDs agora vêm das Variáveis de Ambiente (.env)
 const PLAN_IDS = {
-  ESSENCIAL: '11111111-1111-1111-1111-111111111111',
-  BUSINESS: '22222222-2222-2222-2222-222222222222',
-  CUSTOM: '33333333-3333-3333-3333-333333333333'
+  ESSENCIAL: import.meta.env.VITE_PLAN_ESSENTIAL || '',
+  BUSINESS: import.meta.env.VITE_PLAN_BUSINESS || '',
+  CUSTOM: import.meta.env.VITE_PLAN_CUSTOM || ''
 };
 
 const COMMON_BENEFITS = [
@@ -44,7 +44,7 @@ const isValidCPF = (cpf: string) => {
   return true;
 };
 
-// Modal de Termos (mantido igual)
+// Modal de Termos
 const TermsModal = ({ isOpen, onClose, type }: { isOpen: boolean; onClose: () => void; type: 'terms' | 'privacy' }) => {
   if (!isOpen) return null;
 
@@ -93,6 +93,7 @@ const TermsModal = ({ isOpen, onClose, type }: { isOpen: boolean; onClose: () =>
 export default function Pricing() {
   const navigate = useNavigate();
 
+  // State para o Simulador (Tela Principal)
   const [units, setUnits] = useState<number>(50);
   const [cycle, setCycle] = useState<'TRIMESTRAL' | 'ANUAL'>('ANUAL');
   const [selectedPlanName, setSelectedPlanName] = useState('Business');
@@ -110,6 +111,7 @@ export default function Pricing() {
   const [modalType, setModalType] = useState<'terms' | 'privacy'>('terms');
   const [termsAccepted, setTermsAccepted] = useState(false);
 
+  // State do Formulário (Dentro do Modal)
   const [registerData, setRegisterData] = useState({
     planId: '',
     isTrial: false,
@@ -136,32 +138,51 @@ export default function Pricing() {
     affiliateCode: ''
   });
 
+  // Atualiza o card selecionado no simulador
   useEffect(() => {
     if (units <= 30) setSelectedPlanName('Essencial');
     else if (units <= 80) setSelectedPlanName('Business');
     else setSelectedPlanName('Custom');
   }, [units]);
 
-  const getPlanDetails = (plan: string) => {
+  // Lógica central de cálculo de preço
+  // overrideUnits: usado para calcular o preço dentro do modal com o valor do input, não do simulador
+  const getPlanDetails = (plan: string, overrideUnits?: number) => {
+    // Usa o override se existir, senão usa o state global units
+    const unitsToCalc = overrideUnits !== undefined ? overrideUnits : units;
+
     let monthlyBase = 0;
     let id = '';
     let min = 1, max = 30;
 
-    if (plan === 'Essencial') { monthlyBase = 190.00; id = PLAN_IDS.ESSENCIAL; max = 30; }
-    else if (plan === 'Business') { monthlyBase = 349.00; id = PLAN_IDS.BUSINESS; min = 31; max = 80; }
+    if (plan === 'Essencial') { 
+      monthlyBase = 190.00; 
+      id = PLAN_IDS.ESSENCIAL; 
+      max = 30; 
+    }
+    else if (plan === 'Business') { 
+      monthlyBase = 349.00; 
+      id = PLAN_IDS.BUSINESS; 
+      min = 31; max = 80; 
+    }
     else { 
-      const unitsForCalc = Math.max(units, 81);
-      monthlyBase = 349.00 + (unitsForCalc - 80) * 1.50; 
-      id = PLAN_IDS.CUSTOM; min = 81; max = 99999; 
+      // Lógica Custom
+      const safeUnits = Math.max(unitsToCalc, 81);
+      monthlyBase = 349.00 + (safeUnits - 80) * 1.50; 
+      id = PLAN_IDS.CUSTOM; 
+      min = 81; max = 99999; 
     }
     
+    // Aplica desconto de 20% no plano anual
     let finalPrice = cycle === 'TRIMESTRAL' ? monthlyBase * 3 : (monthlyBase * 12) * 0.8;
+    
     return { id, finalPrice, min, max, monthlyEquivalent: finalPrice / (cycle === 'TRIMESTRAL' ? 3 : 12) };
   };
 
   const handleSelectPlan = (planName: string, isTrial: boolean) => {
     const details = getPlanDetails(planName);
     
+    // Ajusta as unidades iniciais do modal para ficarem dentro do range do plano
     let initialUnits = units;
     if (initialUnits < details.min) initialUnits = details.min;
     if (initialUnits > details.max) initialUnits = details.max;
@@ -171,7 +192,7 @@ export default function Pricing() {
       planId: details.id,
       isTrial,
       cycle,
-      qtyUnits: initialUnits,
+      qtyUnits: initialUnits, // Inicia o formulário com o valor correto
       qtyBlocks: 1
     }));
     
@@ -181,33 +202,6 @@ export default function Pricing() {
     setShowRegister(true);
     window.scrollTo(0, 0);
   };
-
-  const calculatePrice = (inputUnits: number, selectedCycle: 'TRIMESTRAL' | 'ANUAL') => {
-    let monthlyBase = 0;
-    let planName = '';
-    let planId = '';
-
-    if (inputUnits <= 30) {
-      planName = 'Essencial';
-      monthlyBase = 190.00;
-      planId = PLAN_IDS.ESSENCIAL;
-    } else if (inputUnits <= 80) {
-      planName = 'Business';
-      monthlyBase = 349.00;
-      planId = PLAN_IDS.BUSINESS;
-    } else {
-      planName = 'Custom';
-      const extra = inputUnits - 80;
-      monthlyBase = 349.00 + (extra * 1.50);
-      planId = PLAN_IDS.CUSTOM;
-    }
-
-    let finalPrice = selectedCycle === 'TRIMESTRAL' ? monthlyBase * 3 : (monthlyBase * 12) * 0.8;
-
-    return { planName, finalPrice, planId, monthlyEquivalent: finalPrice / (selectedCycle === 'TRIMESTRAL' ? 3 : 12) };
-  };
-
-  const activePlan = calculatePrice(units, cycle);
 
   const handleUnitChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let val = parseInt(e.target.value) || 0;
@@ -324,6 +318,7 @@ export default function Pricing() {
     const inputUnits = Number(registerData.qtyUnits);
     const details = getPlanDetails(selectedPlanName);
 
+    // Validação de segurança: Impede contratar plano errado para a qtd de unidades
     if (inputUnits < details.min || inputUnits > details.max) {
       setErrorMsg(`Para o plano ${selectedPlanName}, o número de unidades deve ser entre ${details.min} e ${details.max}.`);
       return;
@@ -333,17 +328,17 @@ export default function Pricing() {
     setErrorMsg('');
 
     try {
-      // AJUSTE FINAL: Limpeza de dados e garantia de tipos para evitar erro 400
+      // AJUSTE FINAL: Limpeza de dados e garantia de tipos
       const payload = {
         ...registerData,
         cnpj: registerData.cnpj.replace(/\D/g, ''), // Envia apenas números
-        cpfSyndic: registerData.cpfSyndic.replace(/\D/g, ''), // Envia apenas números
-        whatsappSyndic: registerData.whatsappSyndic.replace(/\D/g, ''), // Envia apenas números
+        cpfSyndic: registerData.cpfSyndic.replace(/\D/g, ''), 
+        whatsappSyndic: registerData.whatsappSyndic.replace(/\D/g, ''),
         cep: registerData.cep.replace(/\D/g, ''),
         qtyUnits: Number(registerData.qtyUnits),
         qtyBlocks: Number(registerData.qtyBlocks || 1),
         isTrial: Boolean(registerData.isTrial),
-        // Garante que campos opcionais não sejam null para o Record do Java
+        planId: details.id, // Garante que o ID vem da variável de ambiente atual
         pontoReferencia: registerData.pontoReferencia || "",
         couponCode: registerData.couponCode || "",
         affiliateCode: registerData.affiliateCode || ""
@@ -368,10 +363,10 @@ export default function Pricing() {
     } catch (err: any) {
       console.error("ERRO COMPLETO:", err.response?.data);
       const msg = err.response?.data?.message || err.response?.data?.error || "Erro ao realizar cadastro.";
-      if (msg.includes("duplicate") || msg.includes("viola a restrição")) {
+      if (typeof msg === 'string' && (msg.includes("duplicate") || msg.includes("viola a restrição"))) {
         setErrorMsg("Este CNPJ ou E-mail já está cadastrado.");
       } else {
-        setErrorMsg(typeof msg === 'string' ? msg : "Erro de validação: Verifique se todos os campos estão preenchidos corretamente.");
+        setErrorMsg(typeof msg === 'string' ? msg : "Erro de validação: Verifique os dados.");
       }
     } finally {
       setLoadingSubmit(false);
@@ -381,7 +376,6 @@ export default function Pricing() {
   const getCardClasses = (planName: string) => {
     const isActive = selectedPlanName === planName;
     const baseClasses = "pricing-card border rounded-2xl p-8 transition-all flex flex-col justify-between min-h-[800px]";
-    
     if (isActive) {
       return `${baseClasses} bg-[#022c22] text-white border-emerald-500 ring-2 ring-emerald-500/50 shadow-2xl scale-105 z-10`;
     }
@@ -451,7 +445,6 @@ export default function Pricing() {
                 <div className="relative z-10">
                   <div className="mb-8 scale-90 origin-left"><Logo theme="light" /></div>
 
-                  {/* ÍCONE NA PARTE VERDE / ESQUERDA */}
                   <div className="mb-6 bg-emerald-500/20 w-16 h-16 rounded-2xl flex items-center justify-center border border-emerald-500/30">
                     <Building className="text-emerald-400" size={32} />
                   </div>
@@ -467,9 +460,14 @@ export default function Pricing() {
                       <span>{registerData.qtyUnits} Unidades</span>
                       <span>{cycle === 'TRIMESTRAL' ? 'Trimestral' : 'Anual'}</span>
                     </div>
+                    
+                    {/* CORREÇÃO VISUAL: Calcula o preço baseado nas unidades DIGITADAS no modal */}
                     <div className="mt-3 text-2xl font-black text-white">
-                      {Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(getPlanDetails(selectedPlanName).finalPrice)}
+                      {Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                        getPlanDetails(selectedPlanName, registerData.qtyUnits).finalPrice
+                      )}
                     </div>
+                    
                     {registerData.isTrial && (
                       <div className="mt-2 bg-emerald-500/20 text-emerald-300 text-xs px-2 py-1 rounded font-bold inline-block border border-emerald-500/30">
                         30 Dias Grátis Ativado
