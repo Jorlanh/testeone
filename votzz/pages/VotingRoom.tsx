@@ -1,14 +1,13 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  ArrowLeft, MessageSquare, FileCheck, Shield, Video, Send, Lock, Clock, FileText, CheckCircle, Gavel, Scale, Download, Eye, EyeOff, Layers, X, Trash2, Edit
+  ArrowLeft, MessageSquare, FileCheck, Shield, Video, Send, Lock, Clock, FileText, CheckCircle, Gavel, Scale, Download, Eye, EyeOff, Layers, X, Trash2, Edit, Calendar 
 } from 'lucide-react';
 import api from '../services/api'; 
 import { useAuth } from '../context/AuthContext';
 import SockJS from 'sockjs-client';
 import { over } from 'stompjs';
 
-// Variável global para manter a conexão WebSocket
 let stompClient: any = null;
 
 const VotingRoom: React.FC = () => {
@@ -16,18 +15,14 @@ const VotingRoom: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   
-  // --- ESTADOS DE DADOS ---
   const [assembly, setAssembly] = useState<any>(null);
   const [hasVoted, setHasVoted] = useState(false);
   const [voteReceipt, setVoteReceipt] = useState<string | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   
-  // --- ESTADOS: MULTI-UNIDADES ---
-  // Inicializa com array vazio para evitar undefined no primeiro render
   const [myUnits, setMyUnits] = useState<string[]>([]);
   const [totalWeight, setTotalWeight] = useState(1); 
 
-  // --- ESTADOS DE CONTROLE DE UI ---
   const [showUnitModal, setShowUnitModal] = useState(false);
   const [tempSelectedUnits, setTempSelectedUnits] = useState<string[]>([]);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
@@ -35,67 +30,77 @@ const VotingRoom: React.FC = () => {
   const [connected, setConnected] = useState(false);
   const [activeTab, setActiveTab] = useState<'VOTE' | 'MANAGE'>('VOTE');
   
-  // Estados de Loading/Processamento
+  const [isNotStarted, setIsNotStarted] = useState(false);
+  
   const [closing, setClosing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [summarizing, setSummarizing] = useState(false); 
+  const [isDownloading, setIsDownloading] = useState(false);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   
-  // --- PERMISSÕES E STATUS ---
   const isManager = user?.role === 'MANAGER' || user?.role === 'SINDICO' || user?.role === 'ADM_CONDO' || user?.role === 'ADMIN';
   const isSecret = assembly?.votePrivacy === 'SECRET';
   
-  // Normalização do Status para verificar se está fechada
   const isClosed = useMemo(() => {
       const s = (assembly?.status || '').toUpperCase();
       return ['CLOSED', 'ENCERRADA', 'FINALIZADA', 'HISTORICO'].includes(s);
   }, [assembly]);
 
-  // Regra de Voto: Quem pode votar?
   const canVote = (user?.role === 'MORADOR') || (user?.role === 'SINDICO') || (user?.role === 'ADM_CONDO');
 
-  // --- ESTATÍSTICAS (Cálculo Dinâmico) ---
   const totalVotes = assembly?.votes?.length || 0;
-  // Fração Base (do usuário logado - padrão se não vier do backend)
   const userFraction = (user as any)?.fraction || 0.0152; 
-  // Fração Total da Assembleia (soma simples para visualização)
   const totalFraction = totalVotes * userFraction; 
-  // Fração Total do Usuário (considerando suas múltiplas unidades)
   const myTotalFraction = userFraction * totalWeight;
 
-  // --- 1. SINCRONIZAÇÃO INICIAL (User + Unidades) ---
+  const fixUrl = (url: string) => {
+    if (!url) return '';
+    if (url.includes('X-Amz-Signature')) return url;
+
+    let fixed = url;
+    if (fixed.includes('votzz-storage')) {
+        fixed = fixed.replace('votzz-storage', 'votzz-files-prod');
+    }
+    if (fixed.includes('storage.votzz.com')) {
+        fixed = fixed.replace('https://storage.votzz.com', 'https://votzz-files-prod.s3.sa-east-1.amazonaws.com');
+    }
+    return fixed;
+  };
+
   useEffect(() => {
     if (user) {
-        // Tenta pegar a lista vinda do login (backend AuthDTOs atualizado)
-        // Se não tiver lista, pega a unidade única do cadastro. Se nada, array vazio.
         const unitsFromUser = (user as any)?.unidadesList || [user?.unidade].filter(Boolean);
         
-        console.log("DEBUG: Unidades do usuário carregadas:", unitsFromUser);
-
         if (unitsFromUser && unitsFromUser.length > 0) {
             setMyUnits(unitsFromUser);
             setTotalWeight(unitsFromUser.length);
-            // Pré-seleciona todas por padrão para facilitar o UX
             setTempSelectedUnits(unitsFromUser); 
         } else {
-            // Fallback visual
             setMyUnits(['Unidade Padrão']);
         }
 
-        // Se a assembleia já carregou, verifica se esse usuário JÁ votou
         if (assembly && assembly.votes) {
             checkIfVoted(assembly.votes);
         }
     }
-  }, [user, assembly]); // Executa quando user OU assembly mudarem
+  }, [user, assembly]); 
 
-  // Função auxiliar para verificar se o usuário já votou
+  useEffect(() => {
+    if (assembly && assembly.dataInicio) {
+        const now = new Date();
+        const start = new Date(assembly.dataInicio);
+        
+        if (!isManager && now < start) {
+            setIsNotStarted(true);
+        } else {
+            setIsNotStarted(false);
+        }
+    }
+  }, [assembly, isManager]);
+
   const checkIfVoted = (votes: any[]) => {
       if (!votes || !user) return;
-      
-      // O backend pode retornar o user aninhado (v.user.id) ou flat (v.userId)
-      // Verifica se existe ALGUM voto deste usuário
       const myVote = votes.find((v: any) => {
           const voteUserId = v.userId || (v.user && v.user.id);
           return voteUserId === user.id;
@@ -110,13 +115,11 @@ const VotingRoom: React.FC = () => {
       }
   };
 
-  // --- 2. LÓGICA DE CÁLCULO DA ATA (PREVIEW) ---
   const ataPreview = useMemo(() => {
     if (!assembly) return '';
 
     const votes = assembly.votes || [];
     
-    // 1. Identifica quais opções estão disponíveis (do Banco ou Fallback)
     const activeOptions = assembly.options && assembly.options.length > 0 
       ? assembly.options 
       : [
@@ -125,11 +128,8 @@ const VotingRoom: React.FC = () => {
             { id: 'abstencao', descricao: 'Abstenção' }
         ];
 
-    // 2. Contabiliza os votos dinamicamente comparando IDs
     const results = activeOptions.map((opt: any) => {
-        // Correção: Compara tanto ID quanto descrição para compatibilidade
         const count = votes.filter((v: any) => v.optionId === opt.id || v.optionId === opt.descricao).length;
-        // Cálculo de % da fração ideal (opcional, mas legal na ata)
         const fractionPercent = ((count * userFraction) * 100).toFixed(4);
         return {
             name: opt.descricao || opt.label,
@@ -138,13 +138,10 @@ const VotingRoom: React.FC = () => {
         };
     });
 
-    // 3. Gera o texto dos resultados dinâmico
     const resultsText = results.map((r: any) => 
         `- ${r.name}: ${r.count} votos (${r.percent}% da fração ideal)`
     ).join('\n');
 
-    // 4. Define o vencedor
-    // Ordena por maior número de votos
     const sortedResults = [...results].sort((a: any, b: any) => b.count - a.count);
     
     let decision = "EMPATADO";
@@ -189,7 +186,6 @@ ________________________________________________
 Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
   }, [assembly, totalVotes, totalFraction]);
 
-  // --- 3. CONEXÃO WEBSOCKET ---
   useEffect(() => {
     let isMounted = true;
 
@@ -200,7 +196,7 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
         }
 
         const apiUrl = (import.meta as any).env.VITE_API_URL || 'http://localhost:8080/api';
-        const baseUrl = apiUrl.replace(/\/api$/, '');
+        const baseUrl = apiUrl.replace(/\/api$/, ''); 
         const socketUrl = `${baseUrl}/ws-votzz`;
 
         const socket = new SockJS(socketUrl);
@@ -212,6 +208,7 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
             () => { 
                 if (!isMounted) return;
                 setConnected(true);
+                console.log("WebSocket Conectado com sucesso.");
                 
                 stompClient.subscribe(`/topic/assembly/${id}`, (message: any) => {
                     if (message.body) {
@@ -228,7 +225,7 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                 });
             },
             (error: any) => { 
-                console.error("Erro WebSocket:", error);
+                console.error("Erro na conexão WebSocket:", error);
                 if (isMounted) {
                     setConnected(false);
                     setTimeout(connectWebSocket, 5000);
@@ -244,58 +241,51 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
     return () => {
         isMounted = false;
         if (stompClient && stompClient.connected) {
-            stompClient.disconnect(() => console.log("Desconectado"));
+            stompClient.disconnect(() => console.log("WebSocket Desconectado"));
         }
     };
   }, [id, user]);
 
-  // --- 4. CARGA DE DADOS ---
   useEffect(() => {
     loadData();
-  }, [id]); // Carrega inicialmente pelo ID
+  }, [id]); 
 
   const loadData = async () => {
     if (!id) return;
     
-    // 1. Carrega Assembleia
     try {
         const resAssembly = await api.get(`/assemblies/${id}`);
         setAssembly(resAssembly.data);
     } catch (e) {
-        console.error("Erro ao carregar assembleia:", e);
+        console.error("Erro crítico ao carregar assembleia:", e);
     }
 
-    // 2. Carrega Chat (Independentemente do status da assembleia)
     try {
         const resChat = await api.get(`/chat/assemblies/${id}`);
-        setMessages(resChat.data || []);
-        setTimeout(() => chatEndRef.current?.scrollIntoView(), 500);
-    } catch (e) {
-        console.warn("Chat vazio ou erro:", e);
-        setMessages([]);
+        if (Array.isArray(resChat.data)) {
+            setMessages(resChat.data);
+            setTimeout(() => chatEndRef.current?.scrollIntoView(), 500);
+        } else {
+            setMessages([]);
+        }
+    } catch (e: any) {
+        if (e.response && e.response.status !== 400) {
+             console.warn("Histórico de chat indisponível:", e);
+        }
+        setMessages([]); 
     }
   };
 
-  // --- 5. AÇÕES (VOTO, CHAT, GESTÃO) ---
-  
-  // Função que dispara o processo de voto
   const handleVoteClick = () => {
     if (!id || !selectedOption || !user) return;
-
-    console.log("DEBUG: Iniciando voto. Unidades disponíveis:", myUnits);
-    
-    // Se o morador tem mais de 1 unidade, perguntamos por quais ele quer votar
     if (myUnits.length > 1) {
-        // Se a seleção temporária estiver vazia por algum motivo, preenche com todas
         if (tempSelectedUnits.length === 0) setTempSelectedUnits(myUnits);
         setShowUnitModal(true);
     } else {
-        // Se só tem 1 unidade, vota direto
         submitFinalVote(myUnits);
     }
   };
 
-  // Função que envia o voto real para o backend
   const submitFinalVote = async (unitsToVote: string[]) => {
     try {
       if (unitsToVote.length === 0) {
@@ -308,27 +298,24 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
         return;
       }
 
-      // PAYLOAD CORRIGIDO: Garante que os campos batam com o DTO Java
       const payload = { 
         optionId: selectedOption, 
         userId: user?.id,
-        units: unitsToVote // Enviamos a lista de strings
+        units: unitsToVote 
       };
-
-      console.log("Enviando Voto:", payload);
 
       const response = await api.post(`/assemblies/${id}/vote`, payload);
       
       setHasVoted(true);
       setVoteReceipt(response.data.id || 'CONFIRMADO-MULTI');
       setShowUnitModal(false);
-      setTotalWeight(unitsToVote.length); // Atualiza o peso exibido
+      setTotalWeight(unitsToVote.length); 
       
       alert(`Voto registrado com sucesso para ${unitsToVote.length} unidade(s)!`);
-      loadData(); // Recarrega para atualizar os contadores
+      loadData();
     } catch (e: any) { 
         console.error("Erro ao votar:", e);
-        const errorMsg = e.response?.data?.message || e.response?.data?.error || "Erro desconhecido.";
+        const errorMsg = e.response?.data?.message || e.response?.data?.error || "Erro desconhecido ao processar voto.";
         alert("Erro ao votar: " + errorMsg); 
     }
   };
@@ -338,7 +325,7 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
     if (!chatMsg.trim() || !user) return;
 
     if (!stompClient || !stompClient.connected) {
-        alert("Conexão perdida. Aguarde a reconexão...");
+        alert("Conexão com o chat perdida. Aguarde a reconexão...");
         return;
     }
 
@@ -355,11 +342,9 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
         stompClient.send(`/app/chat/${id}/send`, {}, JSON.stringify(chatDTO));
         setChatMsg('');
     } catch (err) {
-        console.error("Erro envio msg:", err);
+        console.error("Erro ao enviar mensagem:", err);
     }
   };
-
-  // --- FUNÇÕES DE GERENCIAMENTO (SÍNDICO) ---
 
   const handleCloseAssembly = async () => {
     if (!id || !window.confirm("ATENÇÃO: Isso encerrará a votação e gerará a Ata Jurídica. Confirmar?")) return;
@@ -368,7 +353,7 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
         await api.patch(`/assemblies/${id}/close`); 
         loadData();
     } catch(e: any) {
-        alert("Erro: " + (e.response?.data?.message || e.message));
+        alert("Erro ao encerrar: " + (e.response?.data?.message || e.message));
     } finally {
         setClosing(false);
     }
@@ -388,17 +373,53 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
   };
 
   const handleEditAssembly = () => {
-      // Redireciona para a tela de criação passando os dados atuais para edição
       navigate('/create-assembly', { state: { assemblyData: assembly } });
   };
 
-  const handleExportDossier = () => {
-      if(!id) return;
-      const apiUrl = (import.meta as any).env.VITE_API_URL || 'http://localhost:8080/api';
-      window.open(`${apiUrl}/assemblies/${id}/dossier`, '_blank');
+  const handleExportDossier = async () => {
+      if(!id || !assembly) return;
+      
+      setIsDownloading(true); 
+
+      try {
+          console.log("Iniciando download seguro do Dossiê...");
+
+          const response = await api.get(`/assemblies/${id}/dossier`, {
+              responseType: 'blob' 
+          });
+
+          // Nome do arquivo customizado
+          const tenantName = assembly.tenant?.nome ? assembly.tenant.nome.replace(/[^a-zA-Z0-9]/g, '_') : 'Condominio';
+          const title = assembly.titulo ? assembly.titulo.replace(/[^a-zA-Z0-9]/g, '_') : 'Assembleia';
+          const code = id.substring(0,8);
+          const fileName = `${tenantName}_${title}_${code}.pdf`;
+
+          const blob = new Blob([response.data], { type: 'application/pdf' });
+          const url = window.URL.createObjectURL(blob);
+          
+          const link = document.createElement('a');
+          link.href = url;
+          link.setAttribute('download', fileName); 
+          document.body.appendChild(link);
+          link.click();
+          
+          link.parentNode?.removeChild(link);
+          window.URL.revokeObjectURL(url);
+
+          console.log("Download do Dossiê concluído.");
+
+      } catch (error: any) {
+          console.error("Erro ao baixar dossiê:", error);
+          if (error.response?.status === 403) {
+              alert("Acesso negado. Verifique se você é o síndico.");
+          } else {
+              alert("Erro ao gerar o documento. Tente novamente.");
+          }
+      } finally {
+          setIsDownloading(false);
+      }
   };
 
-  // --- FUNÇÃO DE IMPRESSÃO PDF PERSONALIZADA ---
   const handlePrintAta = () => {
       if (!assembly || !ataPreview) return;
 
@@ -440,8 +461,8 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                 </div>
 
                 <script>
-                    window.onload = function() {
-                        setTimeout(function() { window.print(); }, 500);
+                    window.onload = function() { 
+                        setTimeout(function() { window.print(); }, 500); 
                     }
                 </script>
             </body>
@@ -451,6 +472,47 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
       } else {
           alert("Por favor, permita pop-ups para baixar o PDF.");
       }
+  };
+
+  const handleDownloadFile = async () => {
+    if (!assembly || !assembly.anexoUrl) return;
+    
+    setIsDownloading(true);
+    const correctedUrl = fixUrl(assembly.anexoUrl);
+    
+    try {
+        console.log("Tentando baixar arquivo via Fetch/Blob em:", correctedUrl);
+        
+        const response = await fetch(correctedUrl, {
+            method: 'GET',
+            mode: 'cors', 
+            headers: { 'Cache-Control': 'no-cache' }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Erro HTTP: ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        
+        const fileName = correctedUrl.split('/').pop() || 'documento_anexo.pdf';
+        link.setAttribute('download', fileName);
+        
+        document.body.appendChild(link);
+        link.click();
+        
+        link.parentNode?.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
+
+    } catch (error) {
+        console.warn("Fetch falhou ou foi bloqueado. Tentando abrir direto...", error);
+        window.open(correctedUrl, '_blank', 'noopener,noreferrer');
+    } finally {
+        setIsDownloading(false);
+    }
   };
 
   const handleSummarizeIA = () => {
@@ -471,9 +533,37 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
     return "";
   };
 
-  if (!assembly) return <div className="p-20 text-center animate-pulse"><Clock className="w-12 h-12 mx-auto text-slate-300 mb-4 animate-spin"/><p className="text-slate-400 font-bold">Carregando sala...</p></div>;
+  if (!assembly) return (
+      <div className="p-20 text-center animate-pulse flex flex-col items-center justify-center">
+          <Clock className="w-12 h-12 text-slate-300 mb-4 animate-spin"/>
+          <p className="text-slate-400 font-bold">Carregando sala de votação...</p>
+      </div>
+  );
 
-  // Garante opções de voto (Sim/Não/Abstenção por padrão se vazio)
+  if (isNotStarted) {
+      return (
+          <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+            <div className="bg-white max-w-md w-full rounded-2xl shadow-lg p-8 text-center border border-slate-200">
+              <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                 <Clock className="text-amber-500 w-8 h-8" />
+              </div>
+              <h2 className="text-xl font-bold text-slate-800 mb-2">Sala de Votação Fechada</h2>
+              <p className="text-slate-500 text-sm mb-6">
+                Esta assembleia ainda não começou. O acesso será liberado automaticamente no horário agendado.
+              </p>
+              <div className="bg-slate-50 rounded-xl p-4 mb-6 border border-slate-200">
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Início Programado</p>
+                <div className="text-lg font-bold text-slate-700 flex items-center justify-center gap-2">
+                  <Calendar size={18} className="text-emerald-600"/>
+                  {new Date(assembly.dataInicio).toLocaleString('pt-BR')}
+                </div>
+              </div>
+              <button onClick={() => navigate('/dashboard')} className="w-full bg-slate-800 text-white py-3 rounded-lg font-bold hover:bg-slate-900 transition-all">Voltar ao Painel</button>
+            </div>
+          </div>
+      );
+  }
+
   const votingOptions = assembly.options && assembly.options.length > 0 
       ? assembly.options 
       : [
@@ -487,18 +577,25 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
   };
 
   return (
-    <div className="space-y-6 pb-20 p-4 md:p-6">
+    <div className="space-y-6 pb-20 p-4 md:p-6 max-w-7xl mx-auto">
       
       <div className="flex justify-between items-center">
         <button onClick={() => navigate('/assemblies')} className="flex items-center text-slate-500 hover:text-slate-800 transition-colors">
             <ArrowLeft className="h-4 w-4 mr-1" /> Voltar para lista
         </button>
+        
         {isManager && (
             <div className="flex bg-slate-100 p-1 rounded-lg">
-                <button onClick={() => setActiveTab('VOTE')} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${activeTab === 'VOTE' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}>
+                <button 
+                    onClick={() => setActiveTab('VOTE')} 
+                    className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${activeTab === 'VOTE' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}
+                >
                   Sala de Votação
                 </button>
-                <button onClick={() => setActiveTab('MANAGE')} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${activeTab === 'MANAGE' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}>
+                <button 
+                    onClick={() => setActiveTab('MANAGE')} 
+                    className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${activeTab === 'MANAGE' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}
+                >
                   Gestão & Encerramento
                 </button>
             </div>
@@ -606,7 +703,6 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
             
             <div className="lg:col-span-8 space-y-6">
                 
-                {/* Header da Sala */}
                 <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex justify-between items-center">
                     <div>
                         <h1 className="text-2xl font-black text-slate-800">{assembly.titulo || assembly.title}</h1>
@@ -629,7 +725,6 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                     </div>
                 </div>
 
-                {/* Transmissão ao Vivo */}
                 {assembly.youtubeLiveUrl ? (
                     <div className="aspect-video bg-black rounded-[2rem] overflow-hidden shadow-2xl border-4 border-slate-900 relative group">
                         <iframe 
@@ -646,7 +741,6 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                     </div>
                 )}
 
-                {/* Descrição e Anexos */}
                 <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
                     <h3 className="text-slate-400 font-black uppercase text-xs tracking-widest mb-4 flex items-center gap-2"><FileText size={16}/> Pauta Oficial</h3>
                     <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap">
@@ -656,11 +750,20 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                     {assembly.anexoUrl && (
                         <div className="mt-8 pt-6 border-t border-slate-100">
                             <h4 className="text-xs font-black text-slate-400 uppercase mb-3">Documentos Anexos</h4>
-                            <a href={assembly.anexoUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors group">
-                                <div className="bg-white p-2 rounded-lg border border-slate-200 text-red-500"><FileText size={20}/></div>
-                                <span className="font-bold text-slate-700 text-sm group-hover:text-blue-600">Documento da Assembleia (PDF)</span>
-                                <Download size={16} className="ml-auto text-slate-400"/>
-                            </a>
+                            <div 
+                                onClick={handleDownloadFile}
+                                className={`flex items-center gap-3 p-4 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors group cursor-pointer ${isDownloading ? 'opacity-70 cursor-wait' : ''}`}
+                            >
+                                <div className="bg-white p-2 rounded-lg border border-slate-200 text-red-500 relative">
+                                    <FileText size={20}/>
+                                    {isDownloading && <span className="absolute inset-0 flex items-center justify-center bg-white/80 rounded-lg"><Clock size={12} className="animate-spin text-slate-800"/></span>}
+                                </div>
+                                <div className="flex-1">
+                                    <span className="font-bold text-slate-700 text-sm group-hover:text-blue-600 block">Documento da Assembleia (PDF)</span>
+                                    <span className="text-[10px] text-slate-400">{isDownloading ? 'Preparando download...' : 'Clique para visualizar ou baixar'}</span>
+                                </div>
+                                <Download size={16} className={`ml-auto text-slate-400 ${isDownloading ? 'animate-bounce' : ''}`}/>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -668,7 +771,6 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
 
             <div className="lg:col-span-4 space-y-6">
                 
-                {/* Cédula de Votação */}
                 <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 sticky top-6">
                     <h3 className="text-lg font-bold text-slate-800 mb-2 flex items-center">
                         <Lock className="h-5 w-5 mr-2 text-emerald-600" />
@@ -678,7 +780,6 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                     <div className="bg-slate-50 p-3 rounded-lg mb-4 border border-slate-200">
                         <p className="text-xs text-slate-500 uppercase font-bold mb-1 flex justify-between">
                             <span>Seu Poder de Voto</span>
-                            {/* MOSTRA O TOTAL DE UNIDADES AQUI */}
                             {totalWeight > 1 && <span className="text-emerald-600 flex items-center gap-1"><Layers size={10}/> {totalWeight} Unidades</span>}
                         </p>
                         
@@ -709,7 +810,7 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                     {hasVoted ? (
                         <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-center">
                             <div className="h-12 w-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                                <CheckIcon className="h-6 w-6 text-emerald-600" />
+                                <CheckCircle className="h-6 w-6 text-emerald-600" />
                             </div>
                             <h4 className="font-bold text-emerald-900">Voto Confirmado</h4>
                             <p className="text-sm text-emerald-700 mt-1 mb-3">Obrigado por participar.</p>
@@ -770,12 +871,19 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
                     </div>
                     
                     <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/30">
-                        {messages.length === 0 && <div className="text-center mt-20 opacity-30"><MessageSquare size={48} className="mx-auto mb-2"/><p className="font-bold text-xs">Nenhuma mensagem.</p></div>}
+                        {messages.length === 0 && (
+                            <div className="text-center mt-20 opacity-30">
+                                <MessageSquare size={48} className="mx-auto mb-2"/>
+                                <p className="font-bold text-xs">Nenhuma mensagem.</p>
+                            </div>
+                        )}
                         {messages.map((m, idx) => (
                             <div key={idx} className={`flex flex-col ${m.userId === user?.id ? 'items-end' : 'items-start'}`}>
                                 <div className="flex items-center gap-2 mb-1">
                                     <span className="text-[10px] font-black text-slate-400 uppercase">{m.senderName}</span>
-                                    <span className="text-[9px] text-slate-300">{new Date(m.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                    <span className="text-[9px] text-slate-300">
+                                        {new Date(m.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                    </span>
                                 </div>
                                 <div className={`p-3 rounded-2xl max-w-[90%] text-sm shadow-sm ${m.userId === user?.id ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none'}`}>
                                     {m.content}
@@ -802,7 +910,6 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
         </div>
       )}
 
-      {/* MODAL DE SELEÇÃO DE UNIDADES (APARECE SE TIVER > 1 UNIDADE) */}
       {showUnitModal && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl border border-slate-100 scale-in-center">
@@ -849,11 +956,5 @@ Assinado digitalmente pelo Presidente da Mesa / Síndico.`;
     </div>
   );
 };
-
-const CheckIcon = ({className}: {className?: string}) => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <polyline points="20 6 9 17 4 12" />
-  </svg>
-)
 
 export default VotingRoom;

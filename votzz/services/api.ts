@@ -28,11 +28,9 @@ api.interceptors.request.use((config) => {
       const tenantId = user.tenantId || (user.tenant && user.tenant.id);
       
       // BLOQUEIO RIGOROSO: Só envia o header se for um ID real
-      // Impede o envio das strings literais "null", "undefined" ou "temp"
       if (tenantId && !['temp', 'null', 'undefined', ''].includes(String(tenantId))) {
         config.headers['X-Tenant-ID'] = String(tenantId);
       } else {
-        // Se o contexto for inválido, removemos o header para evitar erro 400 no backend
         delete config.headers['X-Tenant-ID'];
       }
     } catch (e) {
@@ -48,8 +46,34 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    
+    // --- LÓGICA DE BLOQUEIO FINANCEIRO (NOVO) ---
+    if (error.response?.status === 402) {
+      const storedUser = localStorage.getItem('@Votzz:user');
+      
+      if (storedUser) {
+        try {
+          const user = JSON.parse(storedUser);
+          
+          // Se for ADMIN ou SINDICO -> Manda para a tela de Pagamento/Renovação
+          if (user.role === 'ADMIN' || user.role === 'SINDICO') {
+             // Redireciona para sua rota de Pricing
+             window.location.href = '#/pricing'; 
+             // Ou window.location.href = '/pricing' se não usar hash router
+          } else {
+             // Se for MORADOR -> Manda para tela de Bloqueio/Aviso
+             alert("O acesso ao condomínio está temporariamente suspenso. Contate a administração.");
+             // Opcional: Criar uma rota '/suspended' e redirecionar:
+             // window.location.href = '#/suspended';
+          }
+        } catch (e) {
+          console.error("Erro ao processar redirecionamento de bloqueio", e);
+        }
+      }
+      return Promise.reject(error);
+    }
+
     // Redireciona para login se o token for inválido (401) OU proibido (403)
-    // 403 acontece quando o usuário existe mas mudou permissão/email e o token antigo não vale mais
     if ((error.response?.status === 401 || error.response?.status === 403) && !window.location.hash.includes('auth')) {
       console.warn("Sessão expirada ou credenciais alteradas. Redirecionando para login...");
       localStorage.removeItem('@Votzz:token');

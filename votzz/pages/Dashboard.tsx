@@ -88,7 +88,8 @@ const Dashboard: React.FC = () => {
     activeAssemblies: 0,
     engagement: 0,
     yearlyVotes: 0,
-    attentionRequired: 0
+    attentionRequired: 0,
+    saldoAtual: 0 // Adicionado para garantir leitura correta
   });
 
   const [showUserList, setShowUserList] = useState(false);
@@ -121,54 +122,62 @@ const Dashboard: React.FC = () => {
 
   const loadData = async () => {
     try {
+        // --- PROMISES COMUNS (TODOS VEEM) ---
+        // Adicionamos 'stats' aqui para o morador ver o saldo e contadores
         const commonPromises: Promise<any>[] = [
-            api.get('/assemblies').catch(() => ({ data: [] }))
+            api.get('/assemblies').catch(() => ({ data: [] })),
+            api.get('/condo/dashboard/stats').catch(() => ({ data: null })), // Stats liberado
+            api.get('/financial/reports').catch(() => ({ data: [] })) // Relatórios liberados
         ];
 
+        // --- PROMISES DE GESTÃO (SÓ MANAGER) ---
         if (isManager) {
             commonPromises.push(
-                api.get('/financial/balance').catch(() => ({ data: { balance: 0, lastUpdate: 'N/A' } })),
-                api.get('/financial/reports').catch(() => ({ data: [] })),
-                api.get('/condo/dashboard/stats').catch(() => ({ data: null })),
                 api.get('/users').catch(() => ({ data: [] })),
                 api.get('/tenants/audit-logs').catch(() => ({ data: [] })),
                 api.get('/tenants/bank-info').catch(() => ({ data: null })),
                 api.get('/tenants/my-subscription').catch(() => ({ data: null }))
             );
-        } else {
-             commonPromises.push(
-                api.get('/financial/reports').catch(() => ({ data: [] }))
-             );
         }
 
         const results = await Promise.allSettled(commonPromises);
 
+        // 1. Assembleias
         if (results[0].status === 'fulfilled') {
             setAssemblies(Array.isArray(results[0].value?.data) ? results[0].value.data : []);
         }
 
-        if (isManager) {
-            if (results[1].status === 'fulfilled') {
-                const finData = (results[1] as any).value?.data;
+        // 2. Stats (Saldo e Contadores)
+        if (results[1].status === 'fulfilled') {
+            const statsData = (results[1] as any).value?.data;
+            if (statsData) {
+                setRealStats(statsData);
+                // Atualiza o financial state com o saldo vindo do endpoint de stats
                 setFinancial({
-                    balance: Number(finData?.balance ?? 0),
-                    lastUpdate: finData?.lastUpdate || 'N/A'
+                    balance: Number(statsData.saldoAtual ?? 0),
+                    lastUpdate: new Date().toLocaleDateString('pt-BR')
                 });
             }
-            if (results[2].status === 'fulfilled') {
-                setReports((results[2] as any).value?.data || []);
+        }
+
+        // 3. Relatórios
+        if (results[2].status === 'fulfilled') {
+            setReports((results[2] as any).value?.data || []);
+        }
+
+        // --- DADOS RESTRITOS ---
+        if (isManager) {
+            // 4. Usuários (Offset +3 pois foram 3 promises antes)
+            if (results[3] && results[3].status === 'fulfilled') {
+                 setCondoUsers(Array.isArray((results[3] as any).value?.data) ? (results[3] as any).value.data : []);
             }
-            if (results[3].status === 'fulfilled') {
-                setRealStats((results[3] as any).value?.data || {});
+            // 5. Audit
+            if (results[4] && results[4].status === 'fulfilled') {
+                 setAuditLogs((results[4] as any).value?.data || []);
             }
-            if (results[4].status === 'fulfilled') {
-                 setCondoUsers(Array.isArray((results[4] as any).value?.data) ? (results[4] as any).value.data : []);
-            }
-            if (results[5].status === 'fulfilled') {
-                 setAuditLogs((results[5] as any).value?.data || []);
-            }
-            if (results[6].status === 'fulfilled') {
-                 const data = (results[6] as any).value?.data;
+            // 6. Bank Info
+            if (results[5] && results[5].status === 'fulfilled') {
+                 const data = (results[5] as any).value?.data;
                  if (data) {
                     setBankForm({
                         bankName: data.bankName || '',
@@ -179,15 +188,12 @@ const Dashboard: React.FC = () => {
                     });
                  }
             }
-            if (results[7].status === 'fulfilled') {
-                 const subData = (results[7] as any).value?.data;
+            // 7. Subscription
+            if (results[6] && results[6].status === 'fulfilled') {
+                 const subData = (results[6] as any).value?.data;
                  if (subData && subData.expirationDate) {
                     setExpirationDate(subData.expirationDate);
                  }
-            }
-        } else {
-             if (results[1] && results[1].status === 'fulfilled') {
-                setReports((results[1] as any).value?.data || []);
             }
         }
 
@@ -464,7 +470,8 @@ const Dashboard: React.FC = () => {
         <div className="grid grid-cols-2 gap-4">
            <div className="bg-white p-6 rounded-2xl border shadow-sm flex flex-col justify-center">
              <Users className="text-blue-500 mb-2" />
-             <p className="text-3xl font-black text-slate-800">{realStats.totalUsers || condoUsers.length}</p>
+             {/* CORREÇÃO: Usamos realStats para exibir o valor para o morador também */}
+             <p className="text-3xl font-black text-slate-800">{realStats.totalUsers > 0 ? realStats.totalUsers : (condoUsers.length || 0)}</p>
              <p className="text-xs text-slate-500 font-bold uppercase">Moradores</p>
            </div>
            <div className="bg-white p-6 rounded-2xl border shadow-sm flex flex-col justify-center">

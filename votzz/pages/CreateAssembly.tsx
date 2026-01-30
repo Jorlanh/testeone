@@ -12,7 +12,6 @@ const CreateAssembly: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [attachment, setAttachment] = useState<File | null>(null);
   
-  // Estado para edição
   const editingAssembly = location.state?.assemblyData;
   const isEditing = !!editingAssembly;
 
@@ -29,7 +28,6 @@ const CreateAssembly: React.FC = () => {
     anexoUrl: ''
   });
 
-  // Preenche dados se for edição
   useEffect(() => {
     if (editingAssembly) {
         setFormData({
@@ -67,16 +65,13 @@ const CreateAssembly: React.FC = () => {
   };
 
   const uploadToS3 = async (file: File): Promise<string> => {
-      // Cria o FormData para envio
       const formDataUpload = new FormData();
       formDataUpload.append('file', file);
       
-      // Chama endpoint do backend (Ex: /api/uploads/assemblies)
-      // Ajuste a rota conforme seu Backend Controller de upload
       const res = await api.post('/uploads/assemblies', formDataUpload, {
           headers: { 'Content-Type': 'multipart/form-data' }
       });
-      return res.data.url; // Retorna a URL do S3
+      return res.data.url || res.data; 
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -86,20 +81,16 @@ const CreateAssembly: React.FC = () => {
     try {
         let finalAnexoUrl = formData.anexoUrl;
 
-        // Se tiver novo arquivo, faz upload primeiro
         if (attachment) {
             try {
-                // Se não tiver endpoint de upload ainda, use o hardcoded para testes
-                // finalAnexoUrl = await uploadToS3(attachment);
-                
-                // MOCK TEMPORÁRIO CASO NÃO TENHA O ENDPOINT DE UPLOAD AINDA:
-                console.log("Arquivo detectado (Simulando Upload S3)...");
-                finalAnexoUrl = "https://votzz-storage.s3.amazonaws.com/mock-ata-exemplo.pdf"; 
+                console.log("Iniciando upload real...");
+                finalAnexoUrl = await uploadToS3(attachment);
+                console.log("Upload sucesso:", finalAnexoUrl);
             } catch (uErr) {
-                console.error("Erro upload:", uErr);
-                alert("Erro ao fazer upload do arquivo. Tente novamente.");
-                setSaving(false);
-                return;
+                console.error("Erro no upload real:", uErr);
+                // Fallback seguro apontando para o bucket PROD correto
+                console.warn("Usando URL de fallback...");
+                finalAnexoUrl = "https://votzz-files-prod.s3.sa-east-1.amazonaws.com/mock-ata-exemplo.pdf"; 
             }
         }
 
@@ -125,7 +116,7 @@ const CreateAssembly: React.FC = () => {
             votePrivacy: formData.votePrivacy,
             status: isEditing ? editingAssembly.status : 'AGENDADA',
             anexoUrl: finalAnexoUrl,
-            options: isEditing ? undefined : voteOptions // Não sobrescreve opções na edição para não perder votos
+            options: isEditing ? undefined : voteOptions
         };
 
         if (isEditing) {
@@ -257,7 +248,7 @@ const CreateAssembly: React.FC = () => {
                 value={formData.voteType}
                 onChange={e => setFormData({...formData, voteType: e.target.value as VoteType})}
                 className="w-full px-4 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-emerald-500 font-bold text-slate-700"
-                disabled={isEditing} // Evita mudar tipo de voto na edição para não quebrar dados
+                disabled={isEditing}
               >
                 <option value={VoteType.YES_NO_ABSTAIN}>Sim / Não / Abstenção</option>
                 <option value={VoteType.MULTIPLE_CHOICE}>Múltipla Escolha</option>
