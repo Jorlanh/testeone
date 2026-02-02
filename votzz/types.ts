@@ -200,16 +200,7 @@ export interface CommonArea {
   requiresApproval?: boolean;
 }
 
-// ATUALIZADO: Inclui novos status para fluxo híbrido e validação
-export type BookingStatus = 
-    | 'PENDING' 
-    | 'APPROVED' 
-    | 'CONFIRMED'  // Alias para Approved
-    | 'REJECTED' 
-    | 'CANCELLED' 
-    | 'COMPLETED' 
-    | 'UNDER_ANALYSIS' // Novo: Aguardando validação do síndico
-    | 'EXPIRED';       // Novo: Expirou o tempo de pagamento
+export type BookingStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'COMPLETED';
 
 export interface Booking {
   id: string;
@@ -223,8 +214,7 @@ export interface Booking {
   endTime: string;
   status: BookingStatus;
   totalPrice: number;
-  createdAt: string; // Obrigatório para cronômetro
-  receiptUrl?: string; // URL do comprovante
+  createdAt?: string;
 }
 
 // --- Chamados (Tickets) ---
