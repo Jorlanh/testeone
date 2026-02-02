@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, CartesianGrid 
 } from 'recharts';
 import { 
-  Users, FileText, CheckCircle, Plus, Megaphone, Calendar, Wallet, Edit, Settings, Upload, Download, FileCheck, Banknote, ShieldAlert, ArrowRight, Building, Shield, Trash2, X, Eye, EyeOff, Package
+  Users, FileText, CheckCircle, Plus, Megaphone, Calendar, Wallet, Edit, Settings, Upload, Download, FileCheck, Banknote, ShieldAlert, ArrowRight, Building, Shield, Trash2, X, Eye, EyeOff, Package, AlertCircle
 } from 'lucide-react';
 import api from '../services/api'; 
 import { Assembly, User } from '../types';
@@ -89,7 +89,8 @@ const Dashboard: React.FC = () => {
     engagement: 0,
     yearlyVotes: 0,
     attentionRequired: 0,
-    saldoAtual: 0 // Adicionado para garantir leitura correta
+    saldoAtual: 0,
+    pendingReceipts: 0 // Novo campo para recibos pendentes
   });
 
   const [showUserList, setShowUserList] = useState(false);
@@ -467,7 +468,7 @@ const Dashboard: React.FC = () => {
           <Wallet className="absolute right-[-10px] bottom-[-10px] text-white/5 w-40 h-40 group-hover:scale-110 transition-transform duration-500" />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
            <div className="bg-white p-6 rounded-2xl border shadow-sm flex flex-col justify-center">
              <Users className="text-blue-500 mb-2" />
              {/* CORREÇÃO: Usamos realStats para exibir o valor para o morador também */}
@@ -479,6 +480,21 @@ const Dashboard: React.FC = () => {
              <p className="text-3xl font-black text-slate-800">{realStats.yearlyVotes || totalVotes}</p>
              <p className="text-xs text-slate-500 font-bold uppercase">Votos (Ano)</p>
            </div>
+           {/* NOVA ÁREA DE COMPROVANTES PENDENTES */}
+           {isManager ? (
+               <div onClick={() => navigate('/spaces')} className="bg-orange-50 p-6 rounded-2xl border border-orange-200 shadow-sm flex flex-col justify-center cursor-pointer hover:bg-orange-100 transition-colors group relative overflow-hidden">
+                 <AlertCircle className="text-orange-500 mb-2 group-hover:scale-110 transition-transform" />
+                 <p className="text-3xl font-black text-orange-700 relative z-10">{realStats.pendingReceipts || 0}</p>
+                 <p className="text-xs text-orange-600 font-bold uppercase relative z-10">Validar Reservas</p>
+                 <div className="absolute right-2 bottom-2 bg-white/50 p-1 rounded-full"><ArrowRight size={14} className="text-orange-400"/></div>
+               </div>
+           ) : (
+               <div className="bg-white p-6 rounded-2xl border shadow-sm flex flex-col justify-center">
+                   <Calendar className="text-purple-500 mb-2" />
+                   <p className="text-3xl font-black text-slate-800">{activeAssembliesList.length}</p>
+                   <p className="text-xs text-slate-500 font-bold uppercase">Assembleias</p>
+               </div>
+           )}
         </div>
       </div>
 

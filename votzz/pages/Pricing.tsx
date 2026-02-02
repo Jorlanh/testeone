@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Check, Calculator, Building, Crown, Smartphone, 
-  AlertCircle, ArrowLeft, Loader2, User, Eye, EyeOff, ArrowRight, Banknote, Copy, Shield, Lock, X, FileText, Tag, UserCheck 
+  AlertCircle, ArrowLeft, Loader2, User, Eye, EyeOff, ArrowRight, Banknote, Copy, Shield, Lock, X, FileText, Tag, UserCheck, Sparkles, TrendingDown
 } from 'lucide-react';
 import api from '../services/api'; 
 import { Logo } from '../components/Logo'; 
@@ -146,9 +146,7 @@ export default function Pricing() {
   }, [units]);
 
   // Lógica central de cálculo de preço
-  // overrideUnits: usado para calcular o preço dentro do modal com o valor do input, não do simulador
   const getPlanDetails = (plan: string, overrideUnits?: number) => {
-    // Usa o override se existir, senão usa o state global units
     const unitsToCalc = overrideUnits !== undefined ? overrideUnits : units;
 
     let monthlyBase = 0;
@@ -173,16 +171,18 @@ export default function Pricing() {
       min = 81; max = 99999; 
     }
     
-    // Aplica desconto de 20% no plano anual
-    let finalPrice = cycle === 'TRIMESTRAL' ? monthlyBase * 3 : (monthlyBase * 12) * 0.8;
+    const fullPrice = cycle === 'TRIMESTRAL' ? monthlyBase * 3 : (monthlyBase * 12);
+    const finalPrice = cycle === 'ANUAL' ? fullPrice * 0.8 : fullPrice;
     
-    return { id, finalPrice, min, max, monthlyEquivalent: finalPrice / (cycle === 'TRIMESTRAL' ? 3 : 12) };
+    // Calcula o valor mensal proporcional para exibição
+    const monthlyEquivalent = finalPrice / (cycle === 'TRIMESTRAL' ? 3 : 12);
+
+    return { id, finalPrice, fullPrice, min, max, monthlyEquivalent };
   };
 
   const handleSelectPlan = (planName: string, isTrial: boolean) => {
     const details = getPlanDetails(planName);
     
-    // Ajusta as unidades iniciais do modal para ficarem dentro do range do plano
     let initialUnits = units;
     if (initialUnits < details.min) initialUnits = details.min;
     if (initialUnits > details.max) initialUnits = details.max;
@@ -192,7 +192,7 @@ export default function Pricing() {
       planId: details.id,
       isTrial,
       cycle,
-      qtyUnits: initialUnits, // Inicia o formulário com o valor correto
+      qtyUnits: initialUnits, 
       qtyBlocks: 1
     }));
     
@@ -318,7 +318,6 @@ export default function Pricing() {
     const inputUnits = Number(registerData.qtyUnits);
     const details = getPlanDetails(selectedPlanName);
 
-    // Validação de segurança: Impede contratar plano errado para a qtd de unidades
     if (inputUnits < details.min || inputUnits > details.max) {
       setErrorMsg(`Para o plano ${selectedPlanName}, o número de unidades deve ser entre ${details.min} e ${details.max}.`);
       return;
@@ -328,23 +327,20 @@ export default function Pricing() {
     setErrorMsg('');
 
     try {
-      // AJUSTE FINAL: Limpeza de dados e garantia de tipos
       const payload = {
         ...registerData,
-        cnpj: registerData.cnpj.replace(/\D/g, ''), // Envia apenas números
+        cnpj: registerData.cnpj.replace(/\D/g, ''),
         cpfSyndic: registerData.cpfSyndic.replace(/\D/g, ''), 
         whatsappSyndic: registerData.whatsappSyndic.replace(/\D/g, ''),
         cep: registerData.cep.replace(/\D/g, ''),
         qtyUnits: Number(registerData.qtyUnits),
         qtyBlocks: Number(registerData.qtyBlocks || 1),
         isTrial: Boolean(registerData.isTrial),
-        planId: details.id, // Garante que o ID vem da variável de ambiente atual
+        planId: details.id,
         pontoReferencia: registerData.pontoReferencia || "",
         couponCode: registerData.couponCode || "",
         affiliateCode: registerData.affiliateCode || ""
       };
-
-      console.log("DEBUG PAYLOAD:", payload);
 
       const res = await api.post('/auth/register-condo', payload);
       const { redirectUrl, pixPayload, pixImage } = res.data;
@@ -377,9 +373,9 @@ export default function Pricing() {
     const isActive = selectedPlanName === planName;
     const baseClasses = "pricing-card border rounded-2xl p-8 transition-all flex flex-col justify-between min-h-[800px]";
     if (isActive) {
-      return `${baseClasses} bg-[#022c22] text-white border-emerald-500 ring-2 ring-emerald-500/50 shadow-2xl scale-105 z-10`;
+      return `${baseClasses} bg-[#022c22] text-white border-emerald-500 ring-2 ring-emerald-500/50 shadow-2xl z-10`;
     }
-    return `${baseClasses} bg-white text-slate-800 border-slate-200 opacity-90 hover:opacity-100 hover:scale-105 z-0`;
+    return `${baseClasses} bg-white text-slate-800 border-slate-200 opacity-90 hover:opacity-100 z-0`;
   };
 
   const BenefitsList = ({ isDark }: { isDark: boolean }) => (
@@ -401,6 +397,11 @@ export default function Pricing() {
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
       
       <TermsModal isOpen={modalOpen} onClose={() => setModalOpen(false)} type={modalType} />
+
+      {/* BANNER 30 DIAS GRÁTIS */}
+      <div className="bg-emerald-600 text-white py-3 px-4 text-center text-sm font-bold flex items-center justify-center gap-2 animate-pulse">
+        <Sparkles size={16} /> OBSERVAÇÃO: Teste qualquer plano por 30 dias totalmente grátis! <Sparkles size={16} />
+      </div>
 
       {showRegister && pixData && (
         <div className="fixed inset-0 z-50 bg-slate-50 flex items-center justify-center p-4 font-sans text-slate-800 animate-in fade-in duration-300">
@@ -461,7 +462,6 @@ export default function Pricing() {
                       <span>{cycle === 'TRIMESTRAL' ? 'Trimestral' : 'Anual'}</span>
                     </div>
                     
-                    {/* CORREÇÃO VISUAL: Calcula o preço baseado nas unidades DIGITADAS no modal */}
                     <div className="mt-3 text-2xl font-black text-white">
                       {Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
                         getPlanDetails(selectedPlanName, registerData.qtyUnits).finalPrice
@@ -469,8 +469,8 @@ export default function Pricing() {
                     </div>
                     
                     {registerData.isTrial && (
-                      <div className="mt-2 bg-emerald-500/20 text-emerald-300 text-xs px-2 py-1 rounded font-bold inline-block border border-emerald-500/30">
-                        30 Dias Grátis Ativado
+                      <div className="mt-2 bg-emerald-500 text-slate-900 text-[10px] px-2 py-1 rounded font-bold inline-block uppercase tracking-wide">
+                        Teste Grátis Ativado
                       </div>
                     )}
                   </div>
@@ -761,19 +761,45 @@ export default function Pricing() {
 
             return (
               <div key={plan} className={`p-8 rounded-2xl transition-all border ${getCardClasses(plan)}`}>
+                
+                {/* Destaque 30 Dias Grátis */}
+                <div className="absolute top-0 right-0 p-4">
+                  <div className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider shadow-md">
+                     30 Dias Grátis
+                  </div>
+                </div>
+
                 <div>
                   <h3 className="text-2xl font-bold flex items-center gap-2">
                     {plan}
                     {plan === 'Custom' && <Crown className="text-yellow-400" size={28} />}
                   </h3>
                   <p className="text-sm opacity-80 mb-4">{rangeText}</p>
-                  <div className="text-3xl font-black mt-4">
-                    {plan === 'Custom' && !isActive 
-                      ? 'R$ ---' 
-                      : Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(displayPrice)
-                    }
+                  
+                  {/* Lógica de Preço (Riscado + Mensal) */}
+                  <div className="mt-4">
+                    {cycle === 'ANUAL' && (
+                        <div className="text-sm line-through opacity-50 font-bold decoration-red-500">
+                           {Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(details.fullPrice)}
+                        </div>
+                    )}
+                    
+                    <div className="text-3xl font-black">
+                      {plan === 'Custom' && !isActive 
+                        ? 'R$ ---' 
+                        : Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(details.finalPrice)
+                      }
+                    </div>
+
+                    <div className="flex items-center gap-2 mt-1">
+                       <TrendingDown size={14} className="text-emerald-500" />
+                       <span className="text-sm text-emerald-500 font-bold">
+                         {plan === 'Custom' && !isActive ? '' : `Sai a ${Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(details.monthlyEquivalent)} /mês`}
+                       </span>
+                    </div>
                   </div>
-                  <p className="text-xs opacity-60 mb-6 uppercase">{cycle}</p>
+
+                  <p className="text-xs opacity-60 mb-6 uppercase mt-2">{cycle}</p>
                   
                   <BenefitsList isDark={isActive} />
                 </div>
@@ -789,9 +815,9 @@ export default function Pricing() {
                       </button>
                       <button 
                         onClick={() => handleSelectPlan(plan, true)}
-                        className="w-full mt-2 text-emerald-600 text-sm font-bold py-2 hover:underline bg-transparent border-none cursor-pointer"
+                        className="w-full mt-2 text-emerald-600 text-sm font-bold py-2 hover:bg-emerald-50 rounded-lg border-2 border-emerald-500/20 transition-all flex items-center justify-center gap-2"
                       >
-                        Testar 30 Dias Grátis
+                        <Sparkles size={16} /> Testar 30 Dias Grátis
                       </button>
                     </>
                   ) : (
@@ -804,7 +830,7 @@ export default function Pricing() {
                       </button>
                       <button 
                         disabled
-                        className="w-full mt-2 text-emerald-600/50 text-sm font-bold py-2 hover:underline bg-transparent border-none cursor-not-allowed"
+                        className="w-full mt-2 text-emerald-600/50 text-sm font-bold py-2 bg-transparent border-none cursor-not-allowed"
                       >
                         Testar 30 Dias Grátis
                       </button>
@@ -817,8 +843,9 @@ export default function Pricing() {
         </div>
         
         {cycle === 'ANUAL' && (
-          <div className="text-center mt-12 bg-emerald-100 max-w-lg mx-auto p-4 rounded-xl border border-emerald-200 text-emerald-800 font-medium shadow-sm">
-            🎉 Você está economizando 20% escolhendo o plano anual!
+          <div className="text-center mt-12 bg-emerald-100 max-w-lg mx-auto p-4 rounded-xl border border-emerald-200 text-emerald-800 font-medium shadow-sm flex items-center justify-center gap-2">
+            <TrendingDown size={20} />
+            <span>Você está economizando 20% escolhendo o plano anual!</span>
           </div>
         )}
       </div>

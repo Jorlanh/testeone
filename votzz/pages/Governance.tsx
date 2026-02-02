@@ -9,15 +9,15 @@ import { useAuth } from '../context/AuthContext';
 
 // StarIcon Component (local definition)
 const StarIconComp = ({ className }: { className?: string }) => (
-    <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
         <path fillRule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.007 5.404.433c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.433 2.082-5.006z" clipRule="evenodd" />
     </svg>
 );
 
 interface DashboardData {
     kpis: { activePolls: number; unreadComms: number; totalActions: number; participationRate: number };
-    timeline: Array<{ type: string; description: string; date: string; user: string; }>;
-    calendar: Array<{ date: string; title: string; type: string; id?: string }>;
+    timeline: Array<{ type: string; description: string; date: string; user: string; status?: string }>;
+    calendar: Array<{ date: string; title: string; type: string; id?: string; status?: string }>;
     polls: { active: any[], archived: any[] };
     announcements: { active: any[], archived: any[] };
 }
@@ -30,13 +30,12 @@ const Governance: React.FC = () => {
   const [subTab, setSubTab] = useState<'active' | 'archived'>('active'); 
   const [loading, setLoading] = useState(true);
 
-  // --- LÓGICA DE MULTI-UNIDADES (CORRIGIDA) ---
+  // --- LÓGICA DE MULTI-UNIDADES ---
   const [userUnits, setUserUnits] = useState<string[]>([]);
   const [showUnitModal, setShowUnitModal] = useState(false);
   const [tempSelectedUnits, setTempSelectedUnits] = useState<string[]>([]);
   const [pendingPollVote, setPendingPollVote] = useState<{pollId: string, optionId: string} | null>(null);
 
-  // CORREÇÃO F5: Sincroniza estado quando user carrega
   useEffect(() => {
     if (user) {
         const units = (user as any)?.unidadesList || (user?.unidade ? [user.unidade] : []);
@@ -71,14 +70,35 @@ const Governance: React.FC = () => {
         const response = await api.get('/governance/dashboard');
         const safeData = response.data || {};
         
-        // Inicializa estruturas vazias se vierem nulas para evitar crash
+        // Inicializa estruturas vazias se vierem nulas
         safeData.polls = safeData.polls || { active: [], archived: [] };
         safeData.announcements = safeData.announcements || { active: [], archived: [] };
         safeData.calendar = safeData.calendar || [];
         safeData.timeline = safeData.timeline || [];
         safeData.kpis = safeData.kpis || { activePolls: 0, unreadComms: 0, totalActions: 0, participationRate: 0 };
 
-        // Processa status de leitura
+        // === FILTRO DE SEGURANÇA VISUAL (APENAS APROVADAS) ===
+        // Status aceitos para exibição pública
+        const allowedStatuses = ['APPROVED', 'CONFIRMED', 'COMPLETED'];
+        
+        // Aplica filtro na Timeline
+        if (safeData.timeline) {
+            safeData.timeline = safeData.timeline.filter((item: any) => {
+                if (item.type !== 'BOOKING') return true; // Outros eventos passam
+                // Se for booking, precisa ter status e estar na lista de permitidos
+                return item.status && allowedStatuses.includes(item.status.toUpperCase());
+            });
+        }
+
+        // Aplica filtro no Calendário
+        if (safeData.calendar) {
+            safeData.calendar = safeData.calendar.filter((item: any) => {
+                if (item.type !== 'BOOKING') return true;
+                return item.status && allowedStatuses.includes(item.status.toUpperCase());
+            });
+        }
+
+        // Processa status de leitura dos comunicados
         const processAnnouncements = (list: any[]) => {
             return list.map(ann => {
                 const userAlreadyRead = ann.isReadByCurrentUser || (ann.readBy && user?.id && ann.readBy.includes(user.id));
@@ -99,7 +119,6 @@ const Governance: React.FC = () => {
 
   // --- ACTIONS ---
 
-  // Função que dispara a lógica de voto (abre modal se necessário)
   const handleVote = async (pollId: string, optionLabel: string) => {
       if (!data) return;
 
@@ -109,12 +128,8 @@ const Governance: React.FC = () => {
       
       if (!option) return;
 
-      // Se tiver mais de uma unidade, abre o modal para ele escolher por quais quer votar
-      // Usa o estado atualizado 'userUnits'
       if (userUnits.length > 1) {
-          // Garante seleção padrão caso esteja vazio
           if (tempSelectedUnits.length === 0) setTempSelectedUnits(userUnits);
-
           setPendingPollVote({ pollId, optionId: option.id });
           setShowUnitModal(true);
       } else {
@@ -122,12 +137,11 @@ const Governance: React.FC = () => {
       }
   };
 
-  // Função que faz o POST real com a lista de unidades
   const submitPollVote = async (pollId: string, optionId: string, unitsToVote: string[]) => {
       try {
           await api.post(`/governance/polls/${pollId}/vote`, { 
               optionId: optionId,
-              units: unitsToVote // Backend recebe a lista: ["Bloco A unidade 202", "Bloco B unidade 203"]
+              units: unitsToVote
           });
           alert(`Voto registrado com sucesso para ${unitsToVote.length} unidade(s)!`);
           setShowUnitModal(false);
@@ -338,7 +352,7 @@ const Governance: React.FC = () => {
                    <h3 className="font-bold text-slate-800 mb-6 flex items-center"><Clock className="w-5 h-5 mr-2 text-slate-400" /> Linha do Tempo (Tempo Real)</h3>
                    <div className="relative pl-2">
                        <div className="absolute top-4 bottom-4 left-[21px] w-0.5 bg-slate-100 -z-0"></div>
-                       {data.timeline.length === 0 && <p className="text-slate-400 text-sm ml-10">Nenhuma atividade recente.</p>}
+                       {data.timeline.length === 0 && <p className="text-slate-400 text-sm ml-10">Nenhuma atividade aprovada recente.</p>}
                        {data.timeline.map((act, idx) => (
                            <div key={idx} className="relative flex items-start gap-4 mb-6 last:mb-0 z-10">
                                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-white border-2 border-slate-100 shadow-sm shrink-0">
@@ -349,10 +363,11 @@ const Governance: React.FC = () => {
                                </div>
                                <div className="bg-white p-4 rounded-lg border border-slate-100 shadow-sm flex-1 hover:border-emerald-200 transition-colors">
                                    <div className="flex justify-between items-start">
-                                       <span className="font-bold text-slate-800 text-sm">{act.description}</span>
-                                       <span className="text-[10px] text-slate-400 font-mono bg-slate-50 px-2 py-1 rounded">{new Date(act.date).toLocaleDateString()}</span>
+                                           <span className="font-bold text-slate-800 text-sm">{act.description}</span>
+                                           <span className="text-[10px] text-slate-400 font-mono bg-slate-50 px-2 py-1 rounded">{new Date(act.date).toLocaleDateString()}</span>
                                    </div>
                                    <p className="text-xs text-slate-500 mt-1">Responsável: {act.user}</p>
+                                   {act.status && <p className="text-[9px] font-bold text-emerald-600 uppercase mt-1">{act.status}</p>}
                                </div>
                            </div>
                        ))}
@@ -473,15 +488,15 @@ const Governance: React.FC = () => {
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
-                                        {poll.options.map((opt: any) => (
-                                            <button key={opt.id} onClick={() => handleVote(poll.id, opt.label)} className="w-full p-3 border rounded-lg bg-white hover:bg-slate-50 text-sm font-medium text-slate-700 text-left transition-colors border-slate-200 hover:border-emerald-300 active:bg-emerald-50 flex justify-between items-center group">
-                                                <span>{opt.label}</span>
-                                                <div className="flex items-center gap-2">
-                                                    {canManage && <span className="text-xs text-slate-400 font-mono bg-slate-100 px-1 rounded">{getVoteCount(poll, opt.id)}</span>}
-                                                    <span className="hidden group-hover:inline text-emerald-500 text-xs font-bold">Votar</span>
-                                                </div>
-                                            </button>
-                                        ))}
+                                            {poll.options.map((opt: any) => (
+                                                <button key={opt.id} onClick={() => handleVote(poll.id, opt.label)} className="w-full p-3 border rounded-lg bg-white hover:bg-slate-50 text-sm font-medium text-slate-700 text-left transition-colors border-slate-200 hover:border-emerald-300 active:bg-emerald-50 flex justify-between items-center group">
+                                                    <span>{opt.label}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        {canManage && <span className="text-xs text-slate-400 font-mono bg-slate-100 px-1 rounded">{getVoteCount(poll, opt.id)}</span>}
+                                                        <span className="hidden group-hover:inline text-emerald-500 text-xs font-bold">Votar</span>
+                                                    </div>
+                                                </button>
+                                            ))}
                                     </div>
                                 )}
                                 </>
@@ -489,12 +504,12 @@ const Governance: React.FC = () => {
                                 <div className="p-4 bg-slate-50 rounded-lg">
                                     <div className="text-center text-slate-500 text-sm mb-3">Votação encerrada.</div>
                                     <div className="space-y-2">
-                                        {poll.options.map((opt: any) => (
-                                            <div key={opt.id} className="flex justify-between text-sm text-slate-700 border-b border-slate-100 pb-1">
-                                                <span>{opt.label}</span>
-                                                <span className="font-bold">{getVoteCount(poll, opt.id)} votos</span>
-                                            </div>
-                                        ))}
+                                            {poll.options.map((opt: any) => (
+                                                <div key={opt.id} className="flex justify-between text-sm text-slate-700 border-b border-slate-100 pb-1">
+                                                    <span>{opt.label}</span>
+                                                    <span className="font-bold">{getVoteCount(poll, opt.id)} votos</span>
+                                                </div>
+                                            ))}
                                     </div>
                                 </div>
                             )}
@@ -543,15 +558,15 @@ const Governance: React.FC = () => {
                                <textarea placeholder="Conteúdo" required className="w-full p-3 border rounded-lg" rows={4} value={annForm.content} onChange={e => setAnnForm({...annForm, content: e.target.value})}/>
                                <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-100">
                                    <div className="flex-1 mr-4">
-                                       <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Prioridade</label>
-                                       <select className="w-full p-2 border rounded bg-white" value={annForm.priority} onChange={e => setAnnForm({...annForm, priority: e.target.value})}>
-                                           <option value="NORMAL">Normal</option>
-                                           <option value="HIGH">Alta Importância</option>
-                                       </select>
+                                           <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Prioridade</label>
+                                           <select className="w-full p-2 border rounded bg-white" value={annForm.priority} onChange={e => setAnnForm({...annForm, priority: e.target.value})}>
+                                               <option value="NORMAL">Normal</option>
+                                               <option value="HIGH">Alta Importância</option>
+                                           </select>
                                    </div>
                                    <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer pt-4">
-                                       <input type="checkbox" checked={annForm.requiresConfirmation} onChange={e => setAnnForm({...annForm, requiresConfirmation: e.target.checked})} className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"/> 
-                                       Exigir Leitura
+                                           <input type="checkbox" checked={annForm.requiresConfirmation} onChange={e => setAnnForm({...annForm, requiresConfirmation: e.target.checked})} className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"/> 
+                                           Exigir Leitura
                                    </label>
                                </div>
                                <div>
@@ -603,7 +618,7 @@ const Governance: React.FC = () => {
                                )}
                                {ann.isReadByCurrentUser && (
                                    <div className="flex items-center gap-1 text-emerald-600 font-bold text-xs bg-emerald-50 px-2 py-1 rounded">
-                                       <CheckCircle size={12}/> Leitura Confirmada
+                                           <CheckCircle size={12}/> Leitura Confirmada
                                    </div>
                                )}
                            </div>
@@ -638,16 +653,16 @@ const Governance: React.FC = () => {
                                 <input type="text" placeholder="Título do Evento" required className="w-full p-3 border rounded-lg" value={eventForm.title} onChange={e => setEventForm({...eventForm, title: e.target.value})} />
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="text-xs font-bold text-slate-500 uppercase">Data</label>
-                                        <input type="date" required className="w-full p-3 border rounded-lg mt-1" value={eventForm.date} onChange={e => setEventForm({...eventForm, date: e.target.value})} />
+                                            <label className="text-xs font-bold text-slate-500 uppercase">Data</label>
+                                            <input type="date" required className="w-full p-3 border rounded-lg mt-1" value={eventForm.date} onChange={e => setEventForm({...eventForm, date: e.target.value})} />
                                     </div>
                                     <div>
-                                        <label className="text-xs font-bold text-slate-500 uppercase">Tipo</label>
-                                        <select className="w-full p-3 border rounded-lg mt-1" value={eventForm.type} onChange={e => setEventForm({...eventForm, type: e.target.value})}>
-                                            <option value="SOCIAL">Evento Social</option>
-                                            <option value="MAINTENANCE">Manutenção</option>
-                                            <option value="MEETING">Reunião</option>
-                                        </select>
+                                            <label className="text-xs font-bold text-slate-500 uppercase">Tipo</label>
+                                            <select className="w-full p-3 border rounded-lg mt-1" value={eventForm.type} onChange={e => setEventForm({...eventForm, type: e.target.value})}>
+                                                <option value="SOCIAL">Evento Social</option>
+                                                <option value="MAINTENANCE">Manutenção</option>
+                                                <option value="MEETING">Reunião</option>
+                                            </select>
                                     </div>
                                 </div>
                                 <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-slate-100">
